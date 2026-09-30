@@ -1,0 +1,70 @@
+[
+  {
+    "name": "贝祖米耶11",
+    "other_names": "暂无",
+    "category": "",
+    "age": "无上限",
+    "gender": "女",
+    "appearance": "白发粉眸",
+    "world": "暂无",
+    "image_groups": [
+      {
+        "name": "1",
+        "images": [
+          "H:/图/稿稿/大宝/1707648491549.jpg",
+          "C:/Users/张依澜/Desktop/未命名作品.png"
+        ],
+        "info": ""
+      }
+    ],
+    "custom_fields": [
+      {
+        "title": "3",
+        "type": "text",
+        "value": ""
+      },
+      {
+        "title": "22",
+        "type": "text",
+        "value": ""
+      }
+    ],
+    "section_order": [],
+    "children_map": {
+      "关系图": [
+        {
+          "title": "1",
+          "type": "text",
+          "value": ""
+        }
+      ]
+    },
+    "relations": [
+      {
+        "target": "444",
+        "relation": "爱人",
+        "story": ""
+      }
+    ]
+  },
+  {
+    "name": "444",
+    "category": "66",
+    "other_names": "",
+    "age": "",
+    "gender": "",
+    "appearance": "",
+    "world": "",
+    "image_groups": [],
+    "custom_fields": [
+      {
+        "title": "1",
+        "type": "images",
+        "value": []
+      }
+    ],
+    "section_order": [],
+    "children_map": {},
+    "relations": []
+  }
+]
