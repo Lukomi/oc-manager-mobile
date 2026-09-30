@@ -28,16 +28,18 @@ jobs:
 
       - name: Install Aidl (fallback method)
         run: |
-          # 先看看 apt 里有没有
-          if ! command -v aidl >/dev/null 2>&1; then
-            echo "aidl 不在 apt 里，手动从 Android SDK 下载"
-            wget -q https://dl.google.com/android/repository/build-tools_r34-linux.zip
-            unzip -q build-tools_r34-linux.zip
-            sudo mkdir -p /opt/android-sdk/build-tools/34.0.0
-            sudo cp android-14/aidl /opt/android-sdk/build-tools/34.0.0/aidl
-            sudo chmod +x /opt/android-sdk/build-tools/34.0.0/aidl
-            sudo ln -sf /opt/android-sdk/build-tools/34.0.0/aidl /usr/local/bin/aidl
-          fi
+          # 装上 libc++ 运行时库（aidl 依赖它）
+          sudo apt install -y libc++1 libc++abi1 || sudo apt install -y libc++-dev
+
+          # 下载 Android Build Tools 拿 aidl
+          wget -q https://dl.google.com/android/repository/build-tools_r34-linux.zip
+          unzip -q build-tools_r34-linux.zip
+          sudo mkdir -p /opt/android-sdk/build-tools/34.0.0
+          sudo cp android-14/aidl /opt/android-sdk/build-tools/34.0.0/aidl
+          sudo chmod +x /opt/android-sdk/build-tools/34.0.0/aidl
+          sudo ln -sf /opt/android-sdk/build-tools/34.0.0/aidl /usr/local/bin/aidl
+
+          # 测试能不能跑
           aidl --version
 
       - name: Install Buildozer
