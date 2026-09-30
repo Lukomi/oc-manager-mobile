@@ -13,9 +13,16 @@ from kivy.uix.image import Image as KivyImage
 from kivy.uix.gridlayout import GridLayout
 from kivy.uix.popup import Popup
 from kivy.uix.behaviors import ButtonBehavior
+from kivy.utils import platform
+
+if platform == 'android':
+    from android.storage import app_storage_path
+    DATA_DIR = app_storage_path()
+else:
+    DATA_DIR = os.path.dirname(os.path.abspath(__file__))
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-DATA_FILE = os.path.join(BASE_DIR, "oc_data.json")
+DATA_FILE = os.path.join(DATA_DIR, "oc_data.json")
 
 FONT_PATH = os.path.join(BASE_DIR, "assets", "fonts", "simhei.ttf")
 try:
