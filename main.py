@@ -73,6 +73,7 @@ C_TAB_ACTIVE    = get_color_from_hex("#FFFFFF")
 C_TAB_INACTIVE  = get_color_from_hex("#C9D0DA")
 
 Window.clearcolor = C_BG
+Window.softinput_mode = 'below_target'  # 键盘弹出时把输入框顶上去
 
 
 # ========== 圆角卡片容器 ==========
@@ -628,9 +629,9 @@ class HomeScreen(Screen):
                                   size_hint_y=None, height=dp(48))
         content.add_widget(backup_btn)
 
-        restore_btn = btn_success("恢复数据", font_size=sp(14),
-                                   size_hint_y=None, height=dp(48))
-        content.add_widget(restore_btn)
+        import_btn = btn_success("导入数据", font_size=sp(14),
+                                  size_hint_y=None, height=dp(48))
+        content.add_widget(import_btn)
 
         close_btn = btn_light("关闭", font_size=sp(13),
                                size_hint_y=None, height=dp(42))
@@ -643,8 +644,8 @@ class HomeScreen(Screen):
         close_btn.bind(on_press=popup.dismiss)
         backup_btn.bind(on_press=lambda x: (popup.dismiss(),
                                              self.backup_data(None)))
-        restore_btn.bind(on_press=lambda x: (popup.dismiss(),
-                                              self.restore_data(None)))
+        import_btn.bind(on_press=lambda x: (popup.dismiss(),
+                                             self.import_data(None)))
         popup.open()
 
     # ---------- 备份数据 ----------
@@ -1622,11 +1623,18 @@ class DetailScreen(Screen):
 # ========== App ==========
 class OCApp(App):
     def build(self):
+        # Android 状态栏避让：整个 App 向下偏移一点
+        if platform == 'android':
+            root = BoxLayout(orientation='vertical',
+                             padding=(0, dp(30), 0, 0))
+        else:
+            root = BoxLayout(orientation='vertical')
+
         sm = ScreenManager()
         sm.add_widget(HomeScreen(name='home'))
         sm.add_widget(DetailScreen(name='detail'))
-        return sm
-
+        root.add_widget(sm)
+        return root
 
 if __name__ == "__main__":
     OCApp().run()
