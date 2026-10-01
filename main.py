@@ -2,8 +2,13 @@ import os
 import json
 from kivy.app import App
 from kivy.core.text import LabelBase
+from kivy.core.window import Window
 from kivy.clock import Clock
+from kivy.metrics import dp, sp
+from kivy.animation import Animation
+from kivy.graphics import Color, Rectangle, RoundedRectangle, Line
 from kivy.uix.boxlayout import BoxLayout
+from kivy.uix.floatlayout import FloatLayout
 from kivy.uix.button import Button
 from kivy.uix.label import Label
 from kivy.uix.textinput import TextInput
@@ -13,7 +18,7 @@ from kivy.uix.image import Image as KivyImage
 from kivy.uix.gridlayout import GridLayout
 from kivy.uix.popup import Popup
 from kivy.uix.behaviors import ButtonBehavior
-from kivy.utils import platform
+from kivy.utils import platform, get_color_from_hex
 
 if platform == 'android':
     from android.storage import app_storage_path
@@ -23,12 +28,139 @@ else:
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DATA_FILE = os.path.join(DATA_DIR, "oc_data.json")
+CATEGORIES_FILE = os.path.join(DATA_DIR, "categories.json")
 
 FONT_PATH = os.path.join(BASE_DIR, "assets", "fonts", "simhei.ttf")
 try:
     LabelBase.register(name='Chinese', fn_regular=FONT_PATH)
 except Exception as e:
     print("字体注册失败：", e)
+
+# ===== 配色（与电脑版一致）=====
+C_PRIMARY       = get_color_from_hex("#4A90E2")
+C_PRIMARY_DARK  = get_color_from_hex("#357ABD")
+C_PRIMARY_LIGHT = get_color_from_hex("#E8F1FB")
+C_SUCCESS       = get_color_from_hex("#52C41A")
+C_SUCCESS_DARK  = get_color_from_hex("#3FA213")
+C_DANGER        = get_color_from_hex("#FF4D4F")
+C_DANGER_DARK   = get_color_from_hex("#D9363E")
+C_BG            = get_color_from_hex("#F5F7FA")
+C_CARD          = get_color_from_hex("#FFFFFF")
+C_BORDER        = get_color_from_hex("#E4E7ED")
+C_TEXT          = get_color_from_hex("#303133")
+C_TEXT_SUB      = get_color_from_hex("#606266")
+C_TEXT_LIGHT    = get_color_from_hex("#909399")
+C_SIDEBAR       = get_color_from_hex("#EEF1F5")
+C_SIDEBAR_HOVER = get_color_from_hex("#DDE3EB")
+C_TAB_BAR       = get_color_from_hex("#DDE2EA")
+C_TAB_ACTIVE    = get_color_from_hex("#FFFFFF")
+C_TAB_INACTIVE  = get_color_from_hex("#C9D0DA")
+
+Window.clearcolor = C_BG
+
+
+# ========== 圆角卡片容器 ==========
+class CardBox(BoxLayout):
+    def __init__(self, bg=C_CARD, radius=10, **kwargs):
+        super().__init__(**kwargs)
+        self._radius = dp(radius)
+        with self.canvas.before:
+            self._color = Color(*bg)
+            self._rect = RoundedRectangle(
+                radius=[self._radius], pos=self.pos, size=self.size)
+        self.bind(pos=self._update, size=self._update)
+
+    def _update(self, *args):
+        self._rect.pos = self.pos
+        self._rect.size = self.size
+
+
+# ========== 圆角按钮 ==========
+class RoundedButton(Button):
+    def __init__(self, bg_color=C_PRIMARY, text_color=(1, 1, 1, 1),
+                 radius=8, **kwargs):
+        super().__init__(**kwargs)
+        self.background_normal = ''
+        self.background_down = ''
+        self.background_color = (0, 0, 0, 0)
+        self.color = text_color
+        self.font_name = 'Chinese'
+        self._bg = bg_color
+        self._radius = dp(radius)
+        with self.canvas.before:
+            self._color = Color(*bg_color)
+            self._rect = RoundedRectangle(
+                radius=[self._radius], pos=self.pos, size=self.size)
+        self.bind(pos=self._update, size=self._update)
+
+    def _update(self, *args):
+        self._rect.pos = self.pos
+        self._rect.size = self.size
+
+    def set_bg(self, color):
+        self._bg = color
+        self._color.rgba = color
+
+
+# 快捷生成不同风格按钮
+def btn_primary(text, **kw):
+    b = RoundedButton(text=text, bg_color=C_PRIMARY, **kw)
+    return b
+
+
+def btn_success(text, **kw):
+    return RoundedButton(text=text, bg_color=C_SUCCESS, **kw)
+
+
+def btn_danger(text, **kw):
+    return RoundedButton(text=text, bg_color=C_DANGER, **kw)
+
+
+def btn_ghost(text, **kw):
+    return RoundedButton(text=text, bg_color=C_CARD,
+                         text_color=C_TEXT, **kw)
+
+
+def btn_light(text, **kw):
+    return RoundedButton(text=text, bg_color=C_SIDEBAR,
+                         text_color=C_TEXT, **kw)
+
+
+# ========== 圆角输入框 ==========
+class RoundedInput(TextInput):
+    def __init__(self, radius=6, **kwargs):
+        super().__init__(**kwargs)
+        self.font_name = 'Chinese'
+        self.background_normal = ''
+        self.background_active = ''
+        self.background_color = (0, 0, 0, 0)
+        self.foreground_color = C_TEXT
+        self.cursor_color = C_PRIMARY
+        self.padding = [dp(8), dp(8), dp(8), dp(8)]
+        self._radius = dp(radius)
+        with self.canvas.before:
+            self._border_color = Color(*C_BORDER)
+            self._border_rect = RoundedRectangle(
+                radius=[self._radius], pos=self.pos, size=self.size)
+            self._bg_color = Color(*C_CARD)
+            self._bg_rect = RoundedRectangle(
+                radius=[self._radius],
+                pos=(self.x + dp(1), self.y + dp(1)),
+                size=(self.width - dp(2), self.height - dp(2)))
+        self.bind(pos=self._update, size=self._update,
+                  focus=self._on_focus)
+
+    def _update(self, *args):
+        self._border_rect.pos = self.pos
+        self._border_rect.size = self.size
+        self._bg_rect.pos = (self.x + dp(1), self.y + dp(1))
+        self._bg_rect.size = (self.width - dp(2), self.height - dp(2))
+
+    def _on_focus(self, instance, value):
+        if value:
+            self._border_color.rgba = C_PRIMARY
+        else:
+            self._border_color.rgba = C_BORDER
 
 
 # ========== 自动高度 Label ==========
@@ -38,6 +170,8 @@ class AutoLabel(Label):
         kwargs.setdefault('halign', 'left')
         kwargs.setdefault('valign', 'top')
         kwargs.setdefault('font_name', 'Chinese')
+        if 'font_size' not in kwargs:
+            kwargs['font_size'] = sp(15)
         super().__init__(**kwargs)
         self.bind(width=self._on_width)
         self.bind(texture_size=self._on_texture)
@@ -47,9 +181,9 @@ class AutoLabel(Label):
 
     def _on_texture(self, *args):
         try:
-            h = float(self.texture_size[1]) + 20
+            h = float(self.texture_size[1]) + dp(10)
         except Exception:
-            h = 40
+            h = dp(30)
         self.height = h
 
 
@@ -65,28 +199,24 @@ class ClickableImage(ButtonBehavior, KivyImage):
         fixed = self.full_path.replace("\\", "/")
         if not os.path.exists(fixed):
             return
-
-        content = BoxLayout(orientation='vertical')
-        big_img = KivyImage(source=fixed, allow_stretch=True, keep_ratio=True)
-        content.add_widget(big_img)
-
-        close_btn = Button(text="关闭", font_name='Chinese',
-                           size_hint_y=None, height=60)
+        content = BoxLayout(orientation='vertical', padding=dp(6),
+                            spacing=dp(6))
+        content.add_widget(KivyImage(source=fixed, allow_stretch=True,
+                                      keep_ratio=True))
+        close_btn = btn_primary("关闭", font_size=sp(15),
+                                size_hint_y=None, height=dp(46))
         content.add_widget(close_btn)
-
-        popup = Popup(
-            title=os.path.basename(fixed),
-            title_font='Chinese',
-            content=content,
-            size_hint=(0.95, 0.95),
-            auto_dismiss=True
-        )
+        popup = Popup(title=os.path.basename(fixed),
+                      title_font='Chinese', title_size=sp(14),
+                      content=content, size_hint=(0.95, 0.95),
+                      auto_dismiss=True,
+                      background_color=C_BG)
         close_btn.bind(on_press=popup.dismiss)
         popup.open()
 
 
 # ========== 长按按钮 ==========
-class LongPressButton(Button):
+class LongPressButton(RoundedButton):
     def __init__(self, on_long_press=None, **kwargs):
         super().__init__(**kwargs)
         self._lp_event = None
@@ -96,8 +226,7 @@ class LongPressButton(Button):
         super().on_press()
         if self._lp_callback:
             self._lp_event = Clock.schedule_once(
-                lambda dt: self._lp_callback(self), 0.6
-            )
+                lambda dt: self._lp_callback(self), 0.6)
 
     def on_release(self):
         super().on_release()
@@ -111,8 +240,10 @@ class HomeScreen(Screen):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         self.all_data = []
+        self.categories = []
         self.current_cat = "全部"
         self.load_data()
+        self.load_categories()
         self.build_ui()
         self.refresh_oc_list()
 
@@ -123,6 +254,13 @@ class HomeScreen(Screen):
         else:
             self.all_data = []
 
+    def load_categories(self):
+        if os.path.exists(CATEGORIES_FILE):
+            with open(CATEGORIES_FILE, "r", encoding="utf-8") as f:
+                self.categories = json.load(f)
+        else:
+            self.categories = []
+
     def save_data(self):
         try:
             with open(DATA_FILE, "w", encoding="utf-8") as f:
@@ -132,8 +270,20 @@ class HomeScreen(Screen):
             print("保存失败：", e)
             return False
 
+    def save_categories(self):
+        try:
+            with open(CATEGORIES_FILE, "w", encoding="utf-8") as f:
+                json.dump(self.categories, f, ensure_ascii=False, indent=2)
+            return True
+        except Exception as e:
+            print("保存分类失败：", e)
+            return False
+
     def get_categories(self):
         cats = ["全部", "未分类"]
+        for c in self.categories:
+            if c and c not in cats:
+                cats.append(c)
         for oc in self.all_data:
             c = oc.get("category", "")
             if c and c not in cats:
@@ -141,84 +291,111 @@ class HomeScreen(Screen):
         return cats
 
     def build_ui(self):
-        root = BoxLayout(orientation='vertical', padding=10, spacing=10)
+        # 最外层浅灰背景
+        outer = BoxLayout(orientation='vertical',
+                          padding=dp(8), spacing=dp(8))
 
-        # 顶部：标题 + 新建按钮
-        top = BoxLayout(size_hint_y=None, height=60, spacing=10)
-        title = Label(
-            text="OC 管理器",
-            font_name='Chinese',
-            font_size=22
-        )
-        top.add_widget(title)
-        new_btn = Button(
-            text="＋ 新建 OC",
-            font_name='Chinese',
-            font_size=14,
-            size_hint_x=None,
-            width=140
-        )
+        # 顶部工具栏卡片
+        top_card = CardBox(size_hint_y=None, height=dp(56),
+                           padding=(dp(10), dp(8)))
+        top_row = BoxLayout(spacing=dp(6))
+        title = Label(text="OC 管理器", font_name='Chinese',
+                      font_size=sp(18), bold=True, color=C_TEXT,
+                      halign='left', valign='middle')
+        title.bind(size=title.setter('text_size'))
+        top_row.add_widget(title)
+
+        new_btn = btn_primary("＋ 新建", font_size=sp(13),
+                              size_hint_x=None, width=dp(90))
         new_btn.bind(on_press=self.on_new_oc)
-        top.add_widget(new_btn)
-        root.add_widget(top)
+        top_row.add_widget(new_btn)
+        top_card.add_widget(top_row)
+        outer.add_widget(top_card)
 
-        # 主体
-        body = BoxLayout(orientation='horizontal', spacing=10)
+        body = BoxLayout(orientation='horizontal', spacing=dp(8))
 
-        # 左侧分类
-        left = BoxLayout(orientation='vertical', size_hint_x=0.32, spacing=5)
-        left_title = Label(text="分类", font_name='Chinese',
-                           font_size=16, size_hint_y=None, height=36)
-        left.add_widget(left_title)
+        # 左侧分类卡片
+        left_card = CardBox(size_hint_x=0.34, padding=dp(8), spacing=dp(6),
+                            orientation='vertical')
+        cat_title = Label(text="分类", font_name='Chinese',
+                          font_size=sp(14), bold=True, color=C_TEXT,
+                          size_hint_y=None, height=dp(28))
+        left_card.add_widget(cat_title)
 
-        self.cat_scroll = ScrollView()
+        self.cat_scroll = ScrollView(do_scroll_x=False,
+                                      bar_width=dp(3),
+                                      scroll_type=['bars', 'content'])
         self.cat_list = BoxLayout(orientation='vertical',
-                                  size_hint_y=None, spacing=5)
+                                  size_hint_y=None, spacing=dp(4))
         self.cat_list.bind(minimum_height=self.cat_list.setter('height'))
         self.cat_scroll.add_widget(self.cat_list)
-        left.add_widget(self.cat_scroll)
+        left_card.add_widget(self.cat_scroll)
 
-        # 右侧 OC 列表
-        right = BoxLayout(orientation='vertical', spacing=5)
+        add_cat_btn = btn_ghost("＋ 添加分类", font_size=sp(12),
+                                size_hint_y=None, height=dp(40))
+        add_cat_btn.bind(on_press=self.on_new_category)
+        left_card.add_widget(add_cat_btn)
+
+        body.add_widget(left_card)
+
+        # 右侧 OC 列表卡片
+        right_card = CardBox(padding=dp(8), spacing=dp(6),
+                             orientation='vertical')
         self.oc_title = Label(text="全部", font_name='Chinese',
-                              font_size=16, size_hint_y=None, height=36)
-        right.add_widget(self.oc_title)
+                              font_size=sp(14), bold=True, color=C_TEXT,
+                              size_hint_y=None, height=dp(28))
+        right_card.add_widget(self.oc_title)
+        hint = Label(text="点名字进详情，长按删除",
+                     font_name='Chinese', font_size=sp(10),
+                     color=C_TEXT_LIGHT,
+                     size_hint_y=None, height=dp(18))
+        right_card.add_widget(hint)
 
-        # 提示文字
-        hint = Label(
-            text="点名字进详情，长按删除",
-            font_name='Chinese',
-            font_size=11,
-            size_hint_y=None,
-            height=22
-        )
-        right.add_widget(hint)
-
-        oc_scroll = ScrollView()
+        oc_scroll = ScrollView(do_scroll_x=False,
+                               bar_width=dp(3),
+                               scroll_type=['bars', 'content'])
         self.oc_list = BoxLayout(orientation='vertical',
-                                 size_hint_y=None, spacing=5)
+                                 size_hint_y=None, spacing=dp(4))
         self.oc_list.bind(minimum_height=self.oc_list.setter('height'))
         oc_scroll.add_widget(self.oc_list)
-        right.add_widget(oc_scroll)
+        right_card.add_widget(oc_scroll)
 
-        body.add_widget(left)
-        body.add_widget(right)
-        root.add_widget(body)
-        self.add_widget(root)
-
+        body.add_widget(right_card)
+        outer.add_widget(body)
+        self.add_widget(outer)
         self.refresh_category_list()
 
     def refresh_category_list(self):
         self.cat_list.clear_widgets()
         for cat in self.get_categories():
-            btn = Button(text=cat, font_name='Chinese',
-                         size_hint_y=None, height=50)
+            is_special = cat in ("全部", "未分类")
+            is_active = (cat == self.current_cat)
+
+            if is_active:
+                bg = C_PRIMARY
+                fg = (1, 1, 1, 1)
+            else:
+                bg = C_PRIMARY_LIGHT if is_special else C_SIDEBAR
+                fg = C_TEXT
+
+            if is_special:
+                btn = RoundedButton(
+                    text=cat, bg_color=bg, text_color=fg,
+                    font_size=sp(13),
+                    size_hint_y=None, height=dp(44))
+            else:
+                btn = LongPressButton(
+                    text=cat, bg_color=bg, text_color=fg,
+                    font_size=sp(13),
+                    size_hint_y=None, height=dp(44),
+                    on_long_press=lambda inst, c=cat: self.on_delete_category(c))
             btn.bind(on_press=lambda b, c=cat: self.on_category_click(c))
             self.cat_list.add_widget(btn)
 
     def on_category_click(self, cat):
         self.current_cat = cat
         self.oc_title.text = cat
+        self.refresh_category_list()
         self.refresh_oc_list()
 
     def refresh_oc_list(self):
@@ -228,74 +405,143 @@ class HomeScreen(Screen):
             if self.current_cat == "全部":
                 m = True
             elif self.current_cat == "未分类":
-                m = (c == "")
+                m = (c == "" or c not in self.get_categories())
             else:
                 m = (c == self.current_cat)
             if m:
                 btn = LongPressButton(
                     text=oc.get("name", "未命名"),
-                    font_name='Chinese',
-                    size_hint_y=None,
-                    height=60,
-                    on_long_press=lambda inst, idx=i: self.on_delete_oc(idx)
-                )
+                    bg_color=C_PRIMARY_LIGHT, text_color=C_TEXT,
+                    font_size=sp(14),
+                    size_hint_y=None, height=dp(50),
+                    on_long_press=lambda inst, idx=i: self.on_delete_oc(idx))
                 btn.bind(on_press=lambda b, idx=i: self.on_oc_click(idx))
                 self.oc_list.add_widget(btn)
 
     def on_oc_click(self, idx):
-        # 短按：进详情
-        # 但是长按也会触发 on_press，所以这里加一个延迟判断
-        # 简单做法：如果长按的定时器还在，就不进详情
-        # 为了简化，直接进详情，长按弹窗会盖在上面
         detail = self.manager.get_screen('detail')
         detail.show_oc(self.all_data[idx])
         self.manager.current = 'detail'
 
-    # ---------- 新建 OC ----------
-    def on_new_oc(self, instance):
-        content = BoxLayout(orientation='vertical', padding=15, spacing=12)
-        content.add_widget(Label(
-            text="新建 OC",
-            font_name='Chinese', font_size=16,
-            size_hint_y=None, height=36
-        ))
-        content.add_widget(Label(
-            text="名字：",
-            font_name='Chinese', font_size=13,
-            size_hint_y=None, height=24,
-            halign='left'
-        ))
-
-        name_input = TextInput(
-            font_name='Chinese', font_size=14,
-            multiline=False, size_hint_y=None, height=50
-        )
+    # ---------- 新建分类 ----------
+    def on_new_category(self, instance):
+        content = CardBox(orientation='vertical',
+                          padding=dp(12), spacing=dp(10))
+        content.add_widget(Label(text="新建分类", font_name='Chinese',
+                                 font_size=sp(15), bold=True, color=C_TEXT,
+                                 size_hint_y=None, height=dp(32)))
+        name_input = RoundedInput(multiline=False,
+                                   size_hint_y=None, height=dp(46))
         content.add_widget(name_input)
 
-        content.add_widget(Label(
-            text="分类（可留空）：",
-            font_name='Chinese', font_size=13,
-            size_hint_y=None, height=24,
-            halign='left'
-        ))
+        btn_row = BoxLayout(size_hint_y=None, height=dp(46), spacing=dp(8))
+        ok_btn = btn_primary("确定", font_size=sp(14))
+        cancel_btn = btn_light("取消", font_size=sp(14))
+        btn_row.add_widget(ok_btn)
+        btn_row.add_widget(cancel_btn)
+        content.add_widget(btn_row)
 
-        # 分类下拉用按钮选择
-        cat_input = TextInput(
-            font_name='Chinese', font_size=14,
-            multiline=False, size_hint_y=None, height=50
-        )
-        cat_input.text = ""
+        popup = Popup(title="新建分类", title_font='Chinese',
+                      title_size=sp(14), content=content,
+                      size_hint=(0.85, 0.45),
+                      background_color=C_BG)
+
+        def on_ok(inst):
+            name = name_input.text.strip()
+            if not name:
+                return
+            if name in ("全部", "未分类"):
+                self.show_toast("这是保留名")
+                return
+            if name in self.categories:
+                self.show_toast("分类已存在")
+                return
+            self.categories.append(name)
+            self.save_categories()
+            popup.dismiss()
+            self.refresh_category_list()
+            self.show_toast(f"已添加：{name}")
+
+        ok_btn.bind(on_press=on_ok)
+        cancel_btn.bind(on_press=popup.dismiss)
+        popup.open()
+
+    # ---------- 删除分类 ----------
+    def on_delete_category(self, cat):
+        content = CardBox(orientation='vertical',
+                          padding=dp(12), spacing=dp(10))
+        content.add_widget(Label(text=f"删除分类「{cat}」？",
+                                 font_name='Chinese', font_size=sp(15),
+                                 bold=True, color=C_TEXT,
+                                 size_hint_y=None, height=dp(40)))
+        content.add_widget(Label(text="该分类下的 OC 会变成未分类",
+                                 font_name='Chinese', font_size=sp(11),
+                                 color=C_TEXT_SUB,
+                                 size_hint_y=None, height=dp(28)))
+        btn_row = BoxLayout(size_hint_y=None, height=dp(46), spacing=dp(8))
+        ok_btn = btn_danger("删除", font_size=sp(14))
+        cancel_btn = btn_light("取消", font_size=sp(14))
+        btn_row.add_widget(ok_btn)
+        btn_row.add_widget(cancel_btn)
+        content.add_widget(btn_row)
+
+        popup = Popup(title="删除分类", title_font='Chinese',
+                      title_size=sp(14), content=content,
+                      size_hint=(0.85, 0.45),
+                      background_color=C_BG)
+
+        def on_ok(inst):
+            for oc in self.all_data:
+                if oc.get("category") == cat:
+                    oc["category"] = ""
+            if cat in self.categories:
+                self.categories.remove(cat)
+            self.save_categories()
+            self.save_data()
+            popup.dismiss()
+            self.current_cat = "全部"
+            self.refresh_category_list()
+            self.refresh_oc_list()
+            self.show_toast(f"已删除：{cat}")
+
+        ok_btn.bind(on_press=on_ok)
+        cancel_btn.bind(on_press=popup.dismiss)
+        popup.open()
+
+    # ---------- 新建 OC ----------
+    def on_new_oc(self, instance):
+        content = CardBox(orientation='vertical',
+                          padding=dp(12), spacing=dp(8))
+        content.add_widget(Label(text="新建 OC", font_name='Chinese',
+                                 font_size=sp(16), bold=True, color=C_TEXT,
+                                 size_hint_y=None, height=dp(32)))
+        content.add_widget(Label(text="名字：", font_name='Chinese',
+                                 font_size=sp(13), color=C_TEXT_SUB,
+                                 size_hint_y=None, height=dp(24),
+                                 halign='left'))
+        name_input = RoundedInput(multiline=False,
+                                   size_hint_y=None, height=dp(46))
+        content.add_widget(name_input)
+        content.add_widget(Label(text="分类（可留空）：", font_name='Chinese',
+                                 font_size=sp(13), color=C_TEXT_SUB,
+                                 size_hint_y=None, height=dp(24),
+                                 halign='left'))
+        default_cat = "" if self.current_cat in ("全部", "未分类") else self.current_cat
+        cat_input = RoundedInput(multiline=False,
+                                  size_hint_y=None, height=dp(46),
+                                  text=default_cat)
         content.add_widget(cat_input)
-
-        btn_row = BoxLayout(size_hint_y=None, height=50, spacing=10)
-        ok_btn = Button(text="确定", font_name='Chinese')
-        cancel_btn = Button(text="取消", font_name='Chinese')
+        btn_row = BoxLayout(size_hint_y=None, height=dp(46), spacing=dp(8))
+        ok_btn = btn_primary("确定", font_size=sp(14))
+        cancel_btn = btn_light("取消", font_size=sp(14))
         btn_row.add_widget(ok_btn)
         btn_row.add_widget(cancel_btn)
         content.add_widget(btn_row)
 
         popup = Popup(title="新建 OC", title_font='Chinese',
-                      content=content, size_hint=(0.85, 0.75))
+                      title_size=sp(14), content=content,
+                      size_hint=(0.9, 0.7),
+                      background_color=C_BG)
 
         def on_ok(inst):
             name = name_input.text.strip()
@@ -303,18 +549,11 @@ class HomeScreen(Screen):
                 return
             category = cat_input.text.strip()
             new_oc = {
-                "name": name,
-                "category": category,
-                "other_names": "",
-                "age": "",
-                "gender": "",
-                "appearance": "",
-                "world": "",
-                "image_groups": [],
-                "custom_fields": [],
-                "section_order": [],
-                "children_map": {},
-                "relations": []
+                "name": name, "category": category,
+                "other_names": "", "age": "", "gender": "",
+                "appearance": "", "world": "",
+                "image_groups": [], "custom_fields": [],
+                "section_order": [], "children_map": {}, "relations": []
             }
             self.all_data.append(new_oc)
             if self.save_data():
@@ -326,31 +565,24 @@ class HomeScreen(Screen):
         cancel_btn.bind(on_press=popup.dismiss)
         popup.open()
 
-    # ---------- 删除 OC ----------
     def on_delete_oc(self, idx):
         name = self.all_data[idx].get("name", "未命名")
-
-        content = BoxLayout(orientation='vertical', padding=15, spacing=15)
-        content.add_widget(Label(
-            text=f"确定删除「{name}」吗？",
-            font_name='Chinese', font_size=16,
-            size_hint_y=None, height=60
-        ))
-        content.add_widget(Label(
-            text="此操作不可撤销",
-            font_name='Chinese', font_size=12,
-            size_hint_y=None, height=30
-        ))
-
-        btn_row = BoxLayout(size_hint_y=None, height=50, spacing=10)
-        ok_btn = Button(text="删除", font_name='Chinese')
-        cancel_btn = Button(text="取消", font_name='Chinese')
+        content = CardBox(orientation='vertical',
+                          padding=dp(12), spacing=dp(10))
+        content.add_widget(Label(text=f"确定删除「{name}」吗？",
+                                 font_name='Chinese', font_size=sp(15),
+                                 bold=True, color=C_TEXT,
+                                 size_hint_y=None, height=dp(50)))
+        btn_row = BoxLayout(size_hint_y=None, height=dp(46), spacing=dp(8))
+        ok_btn = btn_danger("删除", font_size=sp(14))
+        cancel_btn = btn_light("取消", font_size=sp(14))
         btn_row.add_widget(ok_btn)
         btn_row.add_widget(cancel_btn)
         content.add_widget(btn_row)
-
         popup = Popup(title="删除 OC", title_font='Chinese',
-                      content=content, size_hint=(0.8, 0.55))
+                      title_size=sp(14), content=content,
+                      size_hint=(0.85, 0.45),
+                      background_color=C_BG)
 
         def on_ok(inst):
             self.all_data.pop(idx)
@@ -363,6 +595,17 @@ class HomeScreen(Screen):
         cancel_btn.bind(on_press=popup.dismiss)
         popup.open()
 
+    def show_toast(self, text):
+        content = BoxLayout()
+        content.add_widget(Label(text=text, font_name='Chinese',
+                                 font_size=sp(15), color=C_TEXT))
+        popup = Popup(title="", title_size=0, separator_height=0,
+                      content=content,
+                      size_hint=(None, None), size=(dp(220), dp(80)),
+                      auto_dismiss=True, background_color=C_CARD)
+        popup.open()
+        Clock.schedule_once(lambda dt: popup.dismiss(), 1.2)
+
 
 # ========== 详情页 ==========
 class DetailScreen(Screen):
@@ -370,68 +613,103 @@ class DetailScreen(Screen):
         super().__init__(**kwargs)
         self.current_oc = None
         self.field_inputs = []
-        self.name_label = None
+        self.section_widgets = {}
+        self.scroll_view = None
+        self.info_box = None
+        self.sidebar = None
+        self.sidebar_open = False
+        self._sidebar_w = dp(240)
+        self._edge_start = None
 
     def make_input_row(self, label_text, value, multiline=False):
-        box = BoxLayout(orientation='vertical', size_hint_y=None, spacing=3)
-        box.height = 150 if multiline else 90
+        # 每个字段单独一张小卡片
+        card = CardBox(orientation='vertical',
+                       size_hint_y=None, spacing=dp(4),
+                       padding=(dp(10), dp(8)))
+        card.height = dp(170) if multiline else dp(105)
 
-        lbl = Label(
-            text=f"【{label_text}】",
-            font_name='Chinese',
-            font_size=14,
-            size_hint_y=None,
-            height=28,
-            halign='left',
-            valign='middle'
-        )
+        lbl = Label(text=label_text, font_name='Chinese',
+                    font_size=sp(13), bold=True, color=C_TEXT,
+                    size_hint_y=None, height=dp(22),
+                    halign='left', valign='middle')
         lbl.bind(size=lbl.setter('text_size'))
-        box.add_widget(lbl)
+        card.add_widget(lbl)
 
-        ti = TextInput(
-            text=str(value) if value else "",
-            font_name='Chinese',
-            font_size=14,
-            multiline=multiline,
-            size_hint_y=None,
-            height=110 if multiline else 55
-        )
-        box.add_widget(ti)
-        return box, ti
+        ti = RoundedInput(text=str(value) if value else "",
+                          font_size=sp(14), multiline=multiline,
+                          size_hint_y=None,
+                          height=dp(120) if multiline else dp(52))
+        card.add_widget(ti)
+        return card, ti
 
     def show_oc(self, oc):
         self.current_oc = oc
         self.field_inputs = []
+        self.section_widgets = {}
+        self.sidebar_open = False
         self.clear_widgets()
 
-        root = BoxLayout(orientation='vertical', padding=10, spacing=10)
+        root = FloatLayout()
 
-        top = BoxLayout(size_hint_y=None, height=50, spacing=10)
-        back_btn = Button(text="← 返回", font_name='Chinese', size_hint_x=0.25)
+        # ===== 主内容 =====
+        main = BoxLayout(orientation='vertical',
+                         padding=dp(8), spacing=dp(8),
+                         size_hint=(1, 1), pos_hint={'x': 0, 'y': 0})
+
+        # 顶部工具栏
+        top_card = CardBox(size_hint_y=None, height=dp(52),
+                           padding=(dp(8), dp(6)))
+        top = BoxLayout(spacing=dp(6))
+
+        menu_btn = RoundedButton(text="☰", bg_color=C_SIDEBAR,
+                                  text_color=C_TEXT, font_size=sp(18),
+                                  size_hint_x=None, width=dp(44))
+        menu_btn.bind(on_press=lambda x: self.toggle_sidebar())
+        top.add_widget(menu_btn)
+
+        back_btn = RoundedButton(text="←", bg_color=C_SIDEBAR,
+                                  text_color=C_TEXT, font_size=sp(16),
+                                  size_hint_x=None, width=dp(44))
         back_btn.bind(on_press=self.go_back)
         top.add_widget(back_btn)
 
-        self.name_label = Label(
-            text=oc.get("name", "未命名"),
-            font_name='Chinese',
-            font_size=20
-        )
+        self.name_label = Label(text=oc.get("name", "未命名"),
+                                font_name='Chinese', font_size=sp(15),
+                                bold=True, color=C_TEXT)
         top.add_widget(self.name_label)
 
-        save_btn = Button(text="保存", font_name='Chinese', size_hint_x=0.25)
+        save_btn = btn_primary("保存", font_size=sp(13),
+                                size_hint_x=None, width=dp(64))
         save_btn.bind(on_press=self.save_all)
         top.add_widget(save_btn)
-        root.add_widget(top)
+        top_card.add_widget(top)
+        main.add_widget(top_card)
 
-        scroll = ScrollView()
-        info_box = BoxLayout(
-            orientation='vertical',
-            size_hint_y=None,
-            spacing=12,
-            padding=(10, 10)
-        )
+        # 内容滚动区
+        scroll = ScrollView(do_scroll_x=False,
+                            bar_width=dp(3),
+                            scroll_type=['bars', 'content'])
+        self.scroll_view = scroll
+        info_box = BoxLayout(orientation='vertical', size_hint_y=None,
+                             spacing=dp(8), padding=(0, dp(4)))
         info_box.bind(minimum_height=info_box.setter('height'))
+        self.info_box = info_box
 
+        self._build_sections(info_box, oc)
+
+        scroll.add_widget(info_box)
+        main.add_widget(scroll)
+        root.add_widget(main)
+
+        # ===== 侧边栏 =====
+        self.sidebar = self._build_sidebar(oc)
+        self.sidebar.x = -self._sidebar_w
+        root.add_widget(self.sidebar)
+
+        self.add_widget(root)
+
+    def _build_sections(self, info_box, oc):
+        # 内置字段
         fields = [
             ("名字", "name", False),
             ("分类", "category", False),
@@ -442,152 +720,370 @@ class DetailScreen(Screen):
             ("所属世界观", "world", True),
         ]
         for label_text, key, multiline in fields:
-            row, ti = self.make_input_row(label_text, oc.get(key, ""), multiline)
-            info_box.add_widget(row)
+            card, ti = self.make_input_row(label_text, oc.get(key, ""),
+                                            multiline)
+            info_box.add_widget(card)
             self.field_inputs.append(("builtin", key, ti))
+            self.section_widgets[label_text] = card
 
+        # 自定义文字条目 + 子条目
+        children_map = oc.get("children_map", {})
         for idx, field in enumerate(oc.get("custom_fields", [])):
             if field.get("type") == "text":
                 title = field.get("title", "")
-                value = field.get("value", "")
-                row, ti = self.make_input_row(title, value, True)
-                info_box.add_widget(row)
+                card, ti = self.make_input_row(title, field.get("value", ""),
+                                               True)
+                info_box.add_widget(card)
                 self.field_inputs.append(("custom", idx, ti))
+                self.section_widgets[title] = card
 
-        for idx, field in enumerate(oc.get("custom_fields", [])):
+                for c in children_map.get(title, []):
+                    ctitle = c.get("title", "")
+                    if c.get("type") == "text":
+                        sub_card = CardBox(orientation='vertical',
+                                            size_hint_y=None,
+                                            spacing=dp(3),
+                                            padding=(dp(10), dp(6)))
+                        sub_card.height = dp(90)
+                        s_lbl = Label(text="▸ " + ctitle,
+                                       font_name='Chinese', font_size=sp(12),
+                                       bold=True, color=C_PRIMARY_DARK,
+                                       size_hint_y=None, height=dp(20),
+                                       halign='left')
+                        s_lbl.bind(size=s_lbl.setter('text_size'))
+                        sub_card.add_widget(s_lbl)
+                        cval = c.get("value", "")
+                        s_val = Label(text=str(cval) if cval else "（空）",
+                                       font_name='Chinese', font_size=sp(12),
+                                       color=C_TEXT_SUB,
+                                       size_hint_y=None, height=dp(50),
+                                       halign='left', valign='top')
+                        s_val.bind(size=s_val.setter('text_size'))
+                        sub_card.add_widget(s_val)
+                        info_box.add_widget(sub_card)
+                        self.section_widgets[ctitle] = sub_card
+
+        # 图片类型自定义条目
+        for field in oc.get("custom_fields", []):
             if field.get("type") != "text":
                 title = field.get("title", "")
-                info_box.add_widget(AutoLabel(
-                    text=f"【{title}】（图片条目，手机版暂不支持编辑）",
-                    font_size=14
-                ))
+                lbl_card = CardBox(size_hint_y=None, height=dp(56),
+                                    padding=(dp(10), dp(8)))
+                lbl_card.add_widget(Label(
+                    text=f"【{title}】（图片条目）",
+                    font_name='Chinese', font_size=sp(13),
+                    color=C_TEXT, halign='left'))
+                info_box.add_widget(lbl_card)
+                self.section_widgets[title] = lbl_card
 
-        # ===== 参考图片 =====
-        info_box.add_widget(AutoLabel(text="【参考图片】", font_size=18))
+        # 参考图片
+        ref_card = CardBox(orientation='vertical',
+                            size_hint_y=None, spacing=dp(8),
+                            padding=(dp(10), dp(10)))
+        ref_card.bind(minimum_height=ref_card.setter('height'))
+        ref_title = Label(text="参考图片", font_name='Chinese',
+                          font_size=sp(15), bold=True, color=C_TEXT,
+                          size_hint_y=None, height=dp(26),
+                          halign='left')
+        ref_title.bind(size=ref_title.setter('text_size'))
+        ref_card.add_widget(ref_title)
+        self.section_widgets["参考图片"] = ref_card
 
         groups = oc.get("image_groups", [])
         if not groups:
-            # 没有分组时显示占位
-            info_box.add_widget(AutoLabel(
-                text="（暂无参考图片分组，可在电脑版添加）",
-                font_size=13
-            ))
+            ref_card.add_widget(Label(text="（暂无分组）",
+                                       font_name='Chinese', font_size=sp(12),
+                                       color=C_TEXT_LIGHT,
+                                       size_hint_y=None, height=dp(28)))
         else:
             for grp in groups:
-                gname = grp.get("name", "未命名分组")
+                gname = grp.get("name", "")
                 ginfo = grp.get("info", "")
                 gimages = grp.get("images", [])
 
-                info_box.add_widget(AutoLabel(text=f"◆ {gname}", font_size=16))
+                g_lbl = Label(text="◆ " + gname, font_name='Chinese',
+                              font_size=sp(14), bold=True,
+                              color=C_PRIMARY_DARK,
+                              size_hint_y=None, height=dp(26),
+                              halign='left')
+                g_lbl.bind(size=g_lbl.setter('text_size'))
+                ref_card.add_widget(g_lbl)
+                self.section_widgets[gname] = ref_card
+
                 if ginfo:
-                    info_box.add_widget(AutoLabel(text=ginfo, font_size=13))
+                    info_lbl = Label(text=ginfo, font_name='Chinese',
+                                     font_size=sp(12), color=C_TEXT_SUB,
+                                     size_hint_y=None,
+                                     halign='left', valign='top')
+                    info_lbl.bind(width=lambda i, w: setattr(i, 'text_size', (w, None)))
+                    info_lbl.bind(texture_size=lambda i, ts: setattr(i, 'height', ts[1] + dp(6)))
+                    ref_card.add_widget(info_lbl)
 
                 if gimages:
-                    grid = GridLayout(cols=2, spacing=10,
-                                      size_hint_y=None, padding=(5, 5))
+                    grid = GridLayout(cols=2, spacing=dp(6),
+                                      size_hint_y=None,
+                                      padding=(0, dp(4)))
                     grid.bind(minimum_height=grid.setter('height'))
-
                     for path in gimages:
                         fixed = path.replace("\\", "/")
                         if not os.path.exists(fixed):
                             grid.add_widget(Label(
                                 text=f"找不到：{os.path.basename(fixed)}",
-                                font_name='Chinese', font_size=12,
-                                size_hint_y=None, height=100
-                            ))
+                                font_name='Chinese', font_size=sp(11),
+                                color=C_DANGER,
+                                size_hint_y=None, height=dp(80)))
                             continue
                         try:
-                            img = ClickableImage(
-                                source=fixed,
-                                full_path=path,
-                                size_hint_y=None,
-                                height=200,
-                                allow_stretch=True,
-                                keep_ratio=True
-                            )
-                            grid.add_widget(img)
+                            grid.add_widget(ClickableImage(
+                                source=fixed, full_path=path,
+                                size_hint_y=None, height=dp(160),
+                                allow_stretch=True, keep_ratio=True))
                         except Exception:
-                            grid.add_widget(Label(
-                                text=f"无法显示：{os.path.basename(fixed)}",
-                                font_name='Chinese', font_size=12,
-                                size_hint_y=None, height=100
-                            ))
-                    info_box.add_widget(grid)
+                            grid.add_widget(Label(text="无法显示",
+                                                   font_name='Chinese',
+                                                   font_size=sp(11),
+                                                   color=C_DANGER,
+                                                   size_hint_y=None,
+                                                   height=dp(80)))
+                    ref_card.add_widget(grid)
+        info_box.add_widget(ref_card)
 
-        # ===== 关系图 =====
+        # 关系图
+        rel_card = CardBox(orientation='vertical',
+                            size_hint_y=None, spacing=dp(8),
+                            padding=(dp(10), dp(10)))
+        rel_card.bind(minimum_height=rel_card.setter('height'))
+        rel_title = Label(text="关系图", font_name='Chinese',
+                          font_size=sp(15), bold=True, color=C_TEXT,
+                          size_hint_y=None, height=dp(26),
+                          halign='left')
+        rel_title.bind(size=rel_title.setter('text_size'))
+        rel_card.add_widget(rel_title)
+        self.section_widgets["关系图"] = rel_card
+
         relations = oc.get("relations", [])
-        info_box.add_widget(AutoLabel(text="【关系图】", font_size=18))
-
         if not relations:
-            info_box.add_widget(AutoLabel(
-                text="（暂无关系，点下方按钮添加）",
-                font_size=13
-            ))
+            rel_card.add_widget(Label(text="（暂无关系）",
+                                       font_name='Chinese', font_size=sp(12),
+                                       color=C_TEXT_LIGHT,
+                                       size_hint_y=None, height=dp(28)))
         else:
             for idx, rel in enumerate(relations):
                 target = rel.get("target", "")
                 relation = rel.get("relation", "")
                 story = rel.get("story", "")
 
-                card = BoxLayout(
-                    orientation='vertical',
-                    size_hint_y=None,
-                    spacing=4,
-                    padding=(10, 8)
-                )
-                card.bind(minimum_height=card.setter('height'))
+                item = CardBox(orientation='vertical',
+                                bg=C_PRIMARY_LIGHT, radius=6,
+                                size_hint_y=None, spacing=dp(3),
+                                padding=(dp(10), dp(8)))
+                item.bind(minimum_height=item.setter('height'))
 
-                # 第一行：目标 + 关系 + 删除按钮
-                head_row = BoxLayout(size_hint_y=None, height=40, spacing=5)
-
+                head_row = BoxLayout(size_hint_y=None, height=dp(34),
+                                     spacing=dp(4))
                 head_text = f"→ {target}"
                 if relation:
                     head_text += f"（{relation}）"
-                head_label = Label(
-                    text=head_text, font_name='Chinese',
-                    font_size=15, halign='left', valign='middle'
-                )
+                head_label = Label(text=head_text, font_name='Chinese',
+                                   font_size=sp(13), bold=True,
+                                   color=C_PRIMARY_DARK,
+                                   halign='left', valign='middle')
                 head_label.bind(size=head_label.setter('text_size'))
                 head_row.add_widget(head_label)
 
-                del_btn = Button(
-                    text="删除", font_name='Chinese',
-                    font_size=12,
-                    size_hint_x=None, width=80
-                )
+                del_btn = btn_danger("删除", font_size=sp(11),
+                                      size_hint_x=None, width=dp(56),
+                                      size_hint_y=None, height=dp(30))
                 del_btn.bind(on_press=lambda b, i=idx: self.delete_relation(i))
                 head_row.add_widget(del_btn)
-                card.add_widget(head_row)
+                item.add_widget(head_row)
 
-                # 故事
                 if story:
-                    card.add_widget(AutoLabel(text=story, font_size=13))
+                    s_lbl = Label(text=story, font_name='Chinese',
+                                  font_size=sp(12), color=C_TEXT,
+                                  size_hint_y=None,
+                                  halign='left', valign='top')
+                    s_lbl.bind(width=lambda i, w: setattr(i, 'text_size', (w, None)))
+                    s_lbl.bind(texture_size=lambda i, ts: setattr(i, 'height', ts[1] + dp(4)))
+                    item.add_widget(s_lbl)
 
-                info_box.add_widget(card)
+                rel_card.add_widget(item)
 
-        # 添加关系按钮
-        add_rel_btn = Button(
-            text="＋ 添加关系",
-            font_name='Chinese',
-            size_hint_y=None,
-            height=50
-        )
+        add_rel_btn = btn_ghost("＋ 添加关系", font_size=sp(13),
+                                 size_hint_y=None, height=dp(42))
         add_rel_btn.bind(on_press=self.add_relation)
-        info_box.add_widget(add_rel_btn)
-                    
-        btn_row = BoxLayout(size_hint_y=None, height=55, spacing=10)
-        add_btn = Button(text="＋ 添加条目", font_name='Chinese')
-        add_btn.bind(on_press=self.add_entry)
-        del_btn = Button(text="－ 删除条目", font_name='Chinese')
-        del_btn.bind(on_press=self.delete_entry)
-        btn_row.add_widget(add_btn)
-        btn_row.add_widget(del_btn)
-        info_box.add_widget(btn_row)
+        rel_card.add_widget(add_rel_btn)
+        info_box.add_widget(rel_card)
 
-        scroll.add_widget(info_box)
-        root.add_widget(scroll)
-        self.add_widget(root)
+    # ---------- 侧边栏 ----------
+    def _build_sidebar(self, oc):
+        sb = BoxLayout(orientation='vertical',
+                       size_hint=(None, 1),
+                       width=self._sidebar_w,
+                       pos_hint={'x': 0, 'y': 0},
+                       padding=dp(8), spacing=dp(8))
+        with sb.canvas.before:
+            Color(*C_CARD)
+            bg_rect = RoundedRectangle(radius=[0], pos=sb.pos, size=sb.size)
+        def update_bg(*args):
+            bg_rect.pos = sb.pos
+            bg_rect.size = sb.size
+        sb.bind(pos=update_bg, size=update_bg)
 
+        # 顶部标题
+        sb.add_widget(Label(text="导航", font_name='Chinese',
+                            font_size=sp(15), bold=True, color=C_TEXT,
+                            size_hint_y=None, height=dp(32)))
+
+        # 中间滚动区
+        scroll = ScrollView(do_scroll_x=False, do_scroll_y=True,
+                            bar_width=dp(4),
+                            scroll_type=['bars', 'content'],
+                            bar_color=(0.5, 0.5, 0.5, 0.6))
+        inner = BoxLayout(orientation='vertical', size_hint_y=None,
+                          spacing=dp(4))
+        inner.bind(minimum_height=inner.setter('height'))
+
+        def make_item(text, target, is_sub=False):
+            if is_sub:
+                b = btn_light(text, font_size=sp(12),
+                              size_hint_y=None, height=dp(40))
+                b.halign = 'left'
+                b.bind(size=b.setter('text_size'))
+            else:
+                b = RoundedButton(text=text, bg_color=C_SIDEBAR,
+                                   text_color=C_TEXT,
+                                   font_size=sp(13),
+                                   size_hint_y=None, height=dp(46))
+                b.halign = 'left'
+                b.bind(size=b.setter('text_size'))
+            b.bind(on_press=lambda inst, t=target: self._on_sidebar_click(t))
+            return b
+
+        # 内置条目
+        builtin = ["名字", "分类", "其他名字", "年龄", "性别",
+                   "样貌描述/锚点", "所属世界观"]
+        for t in builtin:
+            inner.add_widget(make_item(t, t))
+
+        # 自定义文字条目 + 子条目
+        for field in oc.get("custom_fields", []):
+            if field.get("type") == "text":
+                title = field.get("title", "")
+                inner.add_widget(make_item(title, title))
+
+                for c in oc.get("children_map", {}).get(title, []):
+                    if c.get("type") == "text":
+                        ct = c.get("title", "")
+                        inner.add_widget(make_item("▸ " + ct, ct, is_sub=True))
+
+        # 参考图片 + 分组
+        inner.add_widget(make_item("参考图片", "参考图片"))
+        for grp in oc.get("image_groups", []):
+            gname = grp.get("name", "")
+            if gname:
+                inner.add_widget(make_item("◆ " + gname, gname, is_sub=True))
+
+        # 关系图
+        inner.add_widget(make_item("关系图", "关系图"))
+
+        scroll.add_widget(inner)
+        sb.add_widget(scroll)
+
+        # 底部：添加/删除条目
+        action_box = BoxLayout(size_hint_y=None, height=dp(96),
+                                orientation='vertical', spacing=dp(4))
+        add_btn = btn_primary("＋ 添加条目", font_size=sp(13),
+                              size_hint_y=None, height=dp(44))
+        add_btn.bind(on_press=self._sidebar_add_entry)
+        action_box.add_widget(add_btn)
+
+        del_btn = btn_danger("－ 删除条目", font_size=sp(13),
+                             size_hint_y=None, height=dp(44))
+        del_btn.bind(on_press=self._sidebar_delete_entry)
+        action_box.add_widget(del_btn)
+        sb.add_widget(action_box)
+
+        close_btn = btn_light("关闭", font_size=sp(13),
+                               size_hint_y=None, height=dp(40))
+        close_btn.bind(on_press=lambda x: self.close_sidebar())
+        sb.add_widget(close_btn)
+
+        return sb
+
+    def _sidebar_add_entry(self, instance):
+        self.close_sidebar()
+        Clock.schedule_once(lambda dt: self.add_entry(None), 0.2)
+
+    def _sidebar_delete_entry(self, instance):
+        self.close_sidebar()
+        Clock.schedule_once(lambda dt: self.delete_entry(None), 0.2)
+
+    def _on_sidebar_click(self, title):
+        widget = self.section_widgets.get(title)
+        if widget is None:
+            for k, w in self.section_widgets.items():
+                if k.strip() == title.strip():
+                    widget = w
+                    break
+        if widget and self.scroll_view:
+            self.close_sidebar()
+            Clock.schedule_once(
+                lambda dt: self.scroll_view.scroll_to(widget,
+                                                       padding=dp(10),
+                                                       animate=True),
+                0.25)
+        else:
+            self.show_toast(f"找不到：{title}")
+
+    def toggle_sidebar(self):
+        if self.sidebar_open:
+            self.close_sidebar()
+        else:
+            self.open_sidebar()
+
+    def open_sidebar(self):
+        if not self.sidebar or self.sidebar_open:
+            return
+        self.sidebar_open = True
+        Animation(x=0, duration=0.2).start(self.sidebar)
+
+    def close_sidebar(self):
+        if not self.sidebar or not self.sidebar_open:
+            return
+        self.sidebar_open = False
+        Animation(x=-self._sidebar_w, duration=0.2).start(self.sidebar)
+
+    # ---------- 触摸手势 ----------
+    def on_touch_down(self, touch):
+        if self.sidebar_open and self.sidebar:
+            if not self.sidebar.collide_point(*touch.pos):
+                self.close_sidebar()
+                return True
+        if (not self.sidebar_open and
+            touch.x < dp(20) and
+            touch.y > dp(40) and
+            touch.y < self.height - dp(40)):
+            self._edge_start = (touch.x, touch.y)
+            return True
+        return super().on_touch_down(touch)
+
+    def on_touch_move(self, touch):
+        if self._edge_start:
+            sx, sy = self._edge_start
+            dx = touch.x - sx
+            dy = touch.y - sy
+            if dx > dp(30) and abs(dx) > abs(dy):
+                self.open_sidebar()
+                self._edge_start = None
+                return True
+        return super().on_touch_move(touch)
+
+    def on_touch_up(self, touch):
+        self._edge_start = None
+        return super().on_touch_up(touch)
+
+    # ---------- 保存 ----------
     def save_all(self, instance):
         if not self.current_oc:
             return
@@ -612,72 +1108,122 @@ class DetailScreen(Screen):
             self.show_toast(f"保存失败：{e}")
             return False
 
+    # ---------- 添加条目 ----------
     def add_entry(self, instance):
-        content = BoxLayout(orientation='vertical', padding=15, spacing=15)
-        content.add_widget(Label(
-            text="选择要添加的条目类型",
-            font_name='Chinese', font_size=16,
-            size_hint_y=None, height=40
-        ))
-        text_btn = Button(text="文字信息", font_name='Chinese',
-                          size_hint_y=None, height=60)
-        image_btn = Button(text="图片信息", font_name='Chinese',
-                           size_hint_y=None, height=60)
-        content.add_widget(text_btn)
-        content.add_widget(image_btn)
-
+        content = CardBox(orientation='vertical',
+                          padding=dp(12), spacing=dp(10))
+        content.add_widget(Label(text="添加条目类型", font_name='Chinese',
+                                 font_size=sp(15), bold=True, color=C_TEXT,
+                                 size_hint_y=None, height=dp(32)))
+        b1 = btn_primary("文字信息", font_size=sp(14),
+                          size_hint_y=None, height=dp(48))
+        b2 = btn_primary("图片信息", font_size=sp(14),
+                          size_hint_y=None, height=dp(48))
+        content.add_widget(b1)
+        content.add_widget(b2)
         popup = Popup(title="添加条目", title_font='Chinese',
-                      content=content, size_hint=(0.8, 0.55))
+                      title_size=sp(14), content=content,
+                      size_hint=(0.85, 0.5),
+                      background_color=C_BG)
 
         def choose_text(inst):
             popup.dismiss()
-            self.ask_title_and_add("text")
+            self.ask_parent_and_add("text")
 
         def choose_image(inst):
             popup.dismiss()
-            self.ask_title_and_add("images")
+            self.ask_parent_and_add("images")
 
-        text_btn.bind(on_press=choose_text)
-        image_btn.bind(on_press=choose_image)
+        b1.bind(on_press=choose_text)
+        b2.bind(on_press=choose_image)
         popup.open()
 
-    def ask_title_and_add(self, field_type):
-        content = BoxLayout(orientation='vertical', padding=15, spacing=15)
-        content.add_widget(Label(
-            text="请输入条目名称",
-            font_name='Chinese', font_size=16,
-            size_hint_y=None, height=40
-        ))
-        ti = TextInput(font_name='Chinese', font_size=14,
-                       multiline=False, size_hint_y=None, height=50)
-        content.add_widget(ti)
+    def ask_parent_and_add(self, field_type):
+        oc = self.current_oc
+        parents = [f.get("title", "") for f in oc.get("custom_fields", [])
+                   if f.get("type") == "text"]
 
-        btn_row = BoxLayout(size_hint_y=None, height=50, spacing=10)
-        ok_btn = Button(text="确定", font_name='Chinese')
-        cancel_btn = Button(text="取消", font_name='Chinese')
+        content = CardBox(orientation='vertical',
+                          padding=dp(12), spacing=dp(8))
+        content.add_widget(Label(text="加到哪个条目下？", font_name='Chinese',
+                                 font_size=sp(14), bold=True, color=C_TEXT,
+                                 size_hint_y=None, height=dp(28)))
+        scroll = ScrollView(do_scroll_x=False)
+        list_box = BoxLayout(orientation='vertical',
+                             size_hint_y=None, spacing=dp(4))
+        list_box.bind(minimum_height=list_box.setter('height'))
+        scroll.add_widget(list_box)
+        content.add_widget(scroll)
+        popup = Popup(title="选择父条目", title_font='Chinese',
+                      title_size=sp(14), content=content,
+                      size_hint=(0.9, 0.75),
+                      background_color=C_BG)
+
+        top_btn = btn_ghost("（作为顶层条目）", font_size=sp(13),
+                             size_hint_y=None, height=dp(46))
+        def pick_top(inst):
+            popup.dismiss()
+            self.do_add_field(None, field_type)
+        top_btn.bind(on_press=pick_top)
+        list_box.add_widget(top_btn)
+
+        for p in parents:
+            btn = btn_light(p, font_size=sp(13),
+                            size_hint_y=None, height=dp(46))
+            def make_pick(parent_name):
+                def pick(inst):
+                    popup.dismiss()
+                    self.do_add_field(parent_name, field_type)
+                return pick
+            btn.bind(on_press=make_pick(p))
+            list_box.add_widget(btn)
+
+        cancel_btn = btn_light("取消", font_size=sp(13),
+                                size_hint_y=None, height=dp(42))
+        cancel_btn.bind(on_press=popup.dismiss)
+        content.add_widget(cancel_btn)
+        popup.open()
+
+    def do_add_field(self, parent_name, field_type):
+        content = CardBox(orientation='vertical',
+                          padding=dp(12), spacing=dp(10))
+        content.add_widget(Label(text="请输入条目名称",
+                                 font_name='Chinese', font_size=sp(15),
+                                 bold=True, color=C_TEXT,
+                                 size_hint_y=None, height=dp(32)))
+        ti = RoundedInput(multiline=False,
+                           size_hint_y=None, height=dp(46))
+        content.add_widget(ti)
+        btn_row = BoxLayout(size_hint_y=None, height=dp(46), spacing=dp(8))
+        ok_btn = btn_primary("确定", font_size=sp(14))
+        cancel_btn = btn_light("取消", font_size=sp(14))
         btn_row.add_widget(ok_btn)
         btn_row.add_widget(cancel_btn)
         content.add_widget(btn_row)
-
         popup = Popup(title="添加条目", title_font='Chinese',
-                      content=content, size_hint=(0.8, 0.5))
+                      title_size=sp(14), content=content,
+                      size_hint=(0.85, 0.45),
+                      background_color=C_BG)
 
         def on_ok(inst):
             title = ti.text.strip()
             if not title:
                 return
-            for f in self.current_oc.get("custom_fields", []):
-                if f.get("title") == title:
-                    self.show_toast("这个名字已经存在")
-                    return
             if field_type == "text":
                 new_field = {"title": title, "type": "text", "value": ""}
             else:
                 new_field = {"title": title, "type": "images", "value": []}
-            self.current_oc.setdefault("custom_fields", []).append(new_field)
+            oc = self.current_oc
+            if parent_name is None:
+                oc.setdefault("custom_fields", []).append(new_field)
+            else:
+                oc.setdefault("children_map", {})
+                if parent_name not in oc["children_map"]:
+                    oc["children_map"][parent_name] = []
+                oc["children_map"][parent_name].append(new_field)
             popup.dismiss()
             self.save_to_file()
-            self.show_oc(self.current_oc)
+            self.show_oc(oc)
             self.show_toast(f"已添加「{title}」")
 
         ok_btn.bind(on_press=on_ok)
@@ -685,92 +1231,86 @@ class DetailScreen(Screen):
         popup.open()
 
     def delete_entry(self, instance):
-        fields = self.current_oc.get("custom_fields", [])
-        if not fields:
+        oc = self.current_oc
+        options = []
+        for i, f in enumerate(oc.get("custom_fields", [])):
+            options.append((f.get("title", "未命名"), ("parent", i, None)))
+        for parent_name, children in oc.get("children_map", {}).items():
+            for j, c in enumerate(children):
+                options.append((f"    {parent_name} ▸ {c.get('title', '')}",
+                                ("child", parent_name, j)))
+        if not options:
             self.show_toast("没有可删除的条目")
             return
 
-        content = BoxLayout(orientation='vertical', padding=10, spacing=5)
-        content.add_widget(Label(
-            text="选择要删除的条目",
-            font_name='Chinese', font_size=16,
-            size_hint_y=None, height=40
-        ))
-
-        scroll = ScrollView()
+        content = CardBox(orientation='vertical',
+                          padding=dp(12), spacing=dp(6))
+        content.add_widget(Label(text="选择要删除的条目",
+                                 font_name='Chinese', font_size=sp(15),
+                                 bold=True, color=C_TEXT,
+                                 size_hint_y=None, height=dp(32)))
+        scroll = ScrollView(do_scroll_x=False)
         list_box = BoxLayout(orientation='vertical',
-                             size_hint_y=None, spacing=5)
+                             size_hint_y=None, spacing=dp(4))
         list_box.bind(minimum_height=list_box.setter('height'))
         scroll.add_widget(list_box)
         content.add_widget(scroll)
-
         popup = Popup(title="删除条目", title_font='Chinese',
-                      content=content, size_hint=(0.85, 0.75))
+                      title_size=sp(14), content=content,
+                      size_hint=(0.9, 0.75),
+                      background_color=C_BG)
 
-        def make_del(idx, title):
+        def make_del(meta, title):
             def do_del(inst):
-                self.current_oc["custom_fields"].pop(idx)
+                kind = meta[0]
+                if kind == "parent":
+                    oc["custom_fields"].pop(meta[1])
+                elif kind == "child":
+                    pname = meta[1]
+                    idx = meta[2]
+                    oc["children_map"][pname].pop(idx)
+                    if not oc["children_map"][pname]:
+                        del oc["children_map"][pname]
                 popup.dismiss()
                 self.save_to_file()
-                self.show_oc(self.current_oc)
+                self.show_oc(oc)
                 self.show_toast(f"已删除「{title}」")
             return do_del
 
-        for i, f in enumerate(fields):
-            title = f.get("title", "未命名")
-            btn = Button(text=title, font_name='Chinese',
-                         size_hint_y=None, height=55)
-            btn.bind(on_press=make_del(i, title))
+        for title, meta in options:
+            btn = btn_danger(title, font_size=sp(13),
+                             size_hint_y=None, height=dp(46))
+            btn.bind(on_press=make_del(meta, title))
             list_box.add_widget(btn)
 
-        cancel_btn = Button(text="取消", font_name='Chinese',
-                            size_hint_y=None, height=50)
+        cancel_btn = btn_light("取消", font_size=sp(13),
+                                size_hint_y=None, height=dp(42))
         cancel_btn.bind(on_press=popup.dismiss)
         content.add_widget(cancel_btn)
         popup.open()
 
-    def show_toast(self, text):
-        popup = Popup(
-            title="",
-            title_size=0,
-            separator_height=0,
-            content=Label(text=text, font_name='Chinese', font_size=16),
-            size_hint=(None, None),
-            size=(220, 100),
-            auto_dismiss=True
-        )
-        popup.open()
-        Clock.schedule_once(lambda dt: popup.dismiss(), 1.2)
-
-    # ---------- 添加关系 ----------
+    # ---------- 关系 ----------
     def add_relation(self, instance):
         oc = self.current_oc
-        # 从所有 OC 里拿候选名字（排除自己）
         home = self.manager.get_screen('home')
-        candidates = [
-            o.get("name", "") for o in home.all_data
-            if o.get("name") and o.get("name") != oc.get("name")
-        ]
-
-        content = BoxLayout(orientation='vertical', padding=15, spacing=12)
-
-        # 目标角色
-        content.add_widget(Label(
-            text="目标角色：", font_name='Chinese', font_size=14,
-            size_hint_y=None, height=28, halign='left'
-        ))
-
-        # 候选按钮列表（可滚动）
-        cand_scroll = ScrollView(size_hint_y=None, height=140)
+        candidates = [o.get("name", "") for o in home.all_data
+                      if o.get("name") and o.get("name") != oc.get("name")]
+        content = CardBox(orientation='vertical',
+                          padding=dp(12), spacing=dp(8))
+        content.add_widget(Label(text="目标角色：", font_name='Chinese',
+                                 font_size=sp(13), bold=True, color=C_TEXT_SUB,
+                                 size_hint_y=None, height=dp(24),
+                                 halign='left'))
+        cand_scroll = ScrollView(size_hint_y=None, height=dp(120),
+                                  do_scroll_x=False)
         cand_box = BoxLayout(orientation='vertical',
-                             size_hint_y=None, spacing=4)
+                             size_hint_y=None, spacing=dp(4))
         cand_box.bind(minimum_height=cand_box.setter('height'))
-
         target_holder = {"value": ""}
-        target_label = Label(
-            text="（未选择）", font_name='Chinese', font_size=13,
-            size_hint_y=None, height=28, halign='left'
-        )
+        target_label = Label(text="（未选择）", font_name='Chinese',
+                             font_size=sp(12), color=C_TEXT_SUB,
+                             size_hint_y=None, height=dp(24),
+                             halign='left')
         target_label.bind(size=target_label.setter('text_size'))
 
         def make_pick(name):
@@ -780,72 +1320,59 @@ class DetailScreen(Screen):
             return pick
 
         if not candidates:
-            cand_box.add_widget(Label(
-                text="（没有其他 OC 可供选择）",
-                font_name='Chinese', font_size=12,
-                size_hint_y=None, height=40
-            ))
+            cand_box.add_widget(Label(text="（没有其他 OC）",
+                                      font_name='Chinese', font_size=sp(11),
+                                      color=C_TEXT_LIGHT,
+                                      size_hint_y=None, height=dp(36)))
         else:
             for name in candidates:
-                btn = Button(text=name, font_name='Chinese',
-                             size_hint_y=None, height=44)
+                btn = btn_light(name, font_size=sp(13),
+                                size_hint_y=None, height=dp(40))
                 btn.bind(on_press=make_pick(name))
                 cand_box.add_widget(btn)
-
         cand_scroll.add_widget(cand_box)
         content.add_widget(cand_scroll)
         content.add_widget(target_label)
 
-        # 关系
-        content.add_widget(Label(
-            text="关系：", font_name='Chinese', font_size=14,
-            size_hint_y=None, height=28, halign='left'
-        ))
-        rel_input = TextInput(
-            font_name='Chinese', font_size=14,
-            multiline=False, size_hint_y=None, height=46
-        )
+        content.add_widget(Label(text="关系：", font_name='Chinese',
+                                 font_size=sp(13), bold=True, color=C_TEXT_SUB,
+                                 size_hint_y=None, height=dp(24),
+                                 halign='left'))
+        rel_input = RoundedInput(multiline=False,
+                                  size_hint_y=None, height=dp(44))
         content.add_widget(rel_input)
 
-        # 故事
-        content.add_widget(Label(
-            text="故事：", font_name='Chinese', font_size=14,
-            size_hint_y=None, height=28, halign='left'
-        ))
-        story_input = TextInput(
-            font_name='Chinese', font_size=13,
-            multiline=True, size_hint_y=None, height=90
-        )
+        content.add_widget(Label(text="故事：", font_name='Chinese',
+                                 font_size=sp(13), bold=True, color=C_TEXT_SUB,
+                                 size_hint_y=None, height=dp(24),
+                                 halign='left'))
+        story_input = RoundedInput(multiline=True,
+                                    size_hint_y=None, height=dp(80))
         content.add_widget(story_input)
 
-        # 按钮
-        btn_row = BoxLayout(size_hint_y=None, height=50, spacing=10)
-        ok_btn = Button(text="确定", font_name='Chinese')
-        cancel_btn = Button(text="取消", font_name='Chinese')
+        btn_row = BoxLayout(size_hint_y=None, height=dp(46), spacing=dp(8))
+        ok_btn = btn_primary("确定", font_size=sp(14))
+        cancel_btn = btn_light("取消", font_size=sp(14))
         btn_row.add_widget(ok_btn)
         btn_row.add_widget(cancel_btn)
         content.add_widget(btn_row)
-
         popup = Popup(title="添加关系", title_font='Chinese',
-                      content=content, size_hint=(0.9, 0.9))
+                      title_size=sp(14), content=content,
+                      size_hint=(0.95, 0.9),
+                      background_color=C_BG)
 
         def on_ok(inst):
             target = target_holder["value"].strip()
             relation = rel_input.text.strip()
             story = story_input.text.strip()
-
             if not target:
                 self.show_toast("请选择目标角色")
                 return
             if not relation:
                 self.show_toast("请填写关系")
                 return
-
             oc.setdefault("relations", []).append({
-                "target": target,
-                "relation": relation,
-                "story": story
-            })
+                "target": target, "relation": relation, "story": story})
             popup.dismiss()
             self.save_to_file()
             self.show_oc(oc)
@@ -855,31 +1382,28 @@ class DetailScreen(Screen):
         cancel_btn.bind(on_press=popup.dismiss)
         popup.open()
 
-    # ---------- 删除关系 ----------
     def delete_relation(self, idx):
         oc = self.current_oc
         rels = oc.get("relations", [])
         if idx < 0 or idx >= len(rels):
             return
-        rel = rels[idx]
-        target = rel.get("target", "")
-
-        content = BoxLayout(orientation='vertical', padding=15, spacing=15)
-        content.add_widget(Label(
-            text=f"确定删除和「{target}」的关系吗？",
-            font_name='Chinese', font_size=15,
-            size_hint_y=None, height=60
-        ))
-
-        btn_row = BoxLayout(size_hint_y=None, height=50, spacing=10)
-        ok_btn = Button(text="删除", font_name='Chinese')
-        cancel_btn = Button(text="取消", font_name='Chinese')
+        target = rels[idx].get("target", "")
+        content = CardBox(orientation='vertical',
+                          padding=dp(12), spacing=dp(10))
+        content.add_widget(Label(text=f"删除和「{target}」的关系？",
+                                 font_name='Chinese', font_size=sp(14),
+                                 bold=True, color=C_TEXT,
+                                 size_hint_y=None, height=dp(50)))
+        btn_row = BoxLayout(size_hint_y=None, height=dp(46), spacing=dp(8))
+        ok_btn = btn_danger("删除", font_size=sp(14))
+        cancel_btn = btn_light("取消", font_size=sp(14))
         btn_row.add_widget(ok_btn)
         btn_row.add_widget(cancel_btn)
         content.add_widget(btn_row)
-
         popup = Popup(title="删除关系", title_font='Chinese',
-                      content=content, size_hint=(0.8, 0.5))
+                      title_size=sp(14), content=content,
+                      size_hint=(0.85, 0.45),
+                      background_color=C_BG)
 
         def on_ok(inst):
             rels.pop(idx)
@@ -891,6 +1415,17 @@ class DetailScreen(Screen):
         ok_btn.bind(on_press=on_ok)
         cancel_btn.bind(on_press=popup.dismiss)
         popup.open()
+
+    def show_toast(self, text):
+        content = BoxLayout()
+        content.add_widget(Label(text=text, font_name='Chinese',
+                                 font_size=sp(15), color=C_TEXT))
+        popup = Popup(title="", title_size=0, separator_height=0,
+                      content=content,
+                      size_hint=(None, None), size=(dp(220), dp(80)),
+                      auto_dismiss=True, background_color=C_CARD)
+        popup.open()
+        Clock.schedule_once(lambda dt: popup.dismiss(), 1.2)
 
     def go_back(self, instance):
         self.manager.current = 'home'
