@@ -6,7 +6,7 @@ source.dir = .
 source.include_exts = py,png,jpg,jpeg,kv,atlas,ttf,json
 version = 1.4
 android.numeric_version = 5
-requirements = hostpython3==3.11.9,python3==3.11.9,kivy==2.3.0
+requirements = hostpython3==3.11.9,python3==3.11.9,kivy
 orientation = portrait
 fullscreen = 0
 android.permissions = READ_EXTERNAL_STORAGE,WRITE_EXTERNAL_STORAGE,READ_MEDIA_IMAGES

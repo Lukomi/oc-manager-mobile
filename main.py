@@ -5,6 +5,7 @@ import datetime
 from kivy.app import App
 from kivy.core.text import LabelBase
 from kivy.core.window import Window
+from kivy.uix.behaviors.focus import FocusBehavior
 from kivy.clock import Clock
 from kivy.metrics import dp, sp
 from kivy.animation import Animation
@@ -208,6 +209,11 @@ class RoundedInput(TextInput):
         self.bind(pos=self._update, size=self._update,
                   focus=self._on_focus)
 
+    def on_touch_down(self, touch):
+        if self.collide_point(*touch.pos):
+            self.focus = True
+        return super().on_touch_down(touch)
+
     def _update(self, *args):
         self._border_rect.pos = self.pos
         self._border_rect.size = self.size
@@ -217,14 +223,17 @@ class RoundedInput(TextInput):
     def _on_focus(self, instance, value):
         if value:
             self._border_color.rgba = C_PRIMARY
+            # 强制弹出 Android 软键盘
+            try:
+                Window.request_keyboard(None, self, 'text')
+            except Exception:
+                pass
         else:
             self._border_color.rgba = C_BORDER
-
-    def on_touch_down(self, touch):
-        # 强制点击输入框时获取焦点并弹出键盘
-        if not self.disabled and self.collide_point(*touch.pos):
-            self.focus = True
-        return super().on_touch_down(touch)
+            try:
+                Window.release_keyboard(self, 'text')
+            except Exception:
+                pass
 
 # ========== 自动高度 Label ==========
 class AutoLabel(Label):
@@ -685,6 +694,65 @@ class HomeScreen(Screen):
         import_btn.bind(on_press=lambda x: (popup.dismiss(),
                                              self.import_data(None)))
         popup.open()
+
+    def confirm_import(self, src_path):
+        content = CardBox(orientation='vertical',
+                          padding=dp(12), spacing=dp(10))
+        content.add_widget(Label(
+            text=f"导入：\n{os.path.basename(src_path)}？",
+            font_name='Chinese', font_size=sp(14),
+            bold=True, color=C_TEXT,
+            size_hint_y=None, height=dp(60)))
+        content.add_widget(Label(
+            text="当前数据会被覆盖，且无法撤销",
+            font_name='Chinese', font_size=sp(11),
+            color=C_DANGER,
+            size_hint_y=None, height=dp(28)))
+
+        btn_row = BoxLayout(size_hint_y=None, height=dp(46), spacing=dp(8))
+        ok_btn = btn_danger("导入", font_size=sp(14))
+        cancel_btn = btn_light("取消", font_size=sp(14))
+        btn_row.add_widget(ok_btn)
+        btn_row.add_widget(cancel_btn)
+        content.add_widget(btn_row)
+
+        popup = make_popup("导入数据", content, size_hint=(0.9, 0.45))
+
+        def on_ok(inst):
+            popup.dismiss()
+            self.do_import(src_path)
+
+        ok_btn.bind(on_press=on_ok)
+        cancel_btn.bind(on_press=popup.dismiss)
+        popup.open()
+
+    def do_import(self, src_path):
+        try:
+            with open(src_path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+            if not isinstance(data, list):
+                self.show_toast("文件格式不对")
+                return
+
+            shutil.copy2(src_path, DATA_FILE)
+
+            cat_src = os.path.join(os.path.dirname(src_path),
+                                    "categories.json")
+            if os.path.exists(cat_src):
+                shutil.copy2(cat_src, CATEGORIES_FILE)
+
+            self.load_data()
+            self.load_categories()
+            self.current_cat = "全部"
+            self.oc_title.text = "全部"
+            self.refresh_category_list()
+            self.refresh_oc_list()
+
+            self.show_toast("导入成功")
+        except json.JSONDecodeError:
+            self.show_toast("不是合法 JSON")
+        except Exception as e:
+            self.show_toast(f"导入失败：{e}")
 
     # ---------- 设置备份路径 ----------
     def set_backup_path(self, instance):
