@@ -5,12 +5,13 @@ package.domain = org.example
 source.dir = .
 source.include_exts = py,png,jpg,jpeg,kv,atlas,ttf,json
 version = 1.0
-requirements = python3,kivy
+requirements = python3==3.11,kivy
 orientation = portrait
 fullscreen = 0
 android.permissions = READ_EXTERNAL_STORAGE,WRITE_EXTERNAL_STORAGE,READ_MEDIA_IMAGES
 android.accept_sdk_license = True
 android.arch = arm64-v8a
+p4a.branch = v2024.01.21
 
 [buildozer]
 log_level = 2
