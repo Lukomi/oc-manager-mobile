@@ -7,39 +7,20 @@ on:
 
 jobs:
   build:
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-latest
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
+      - name: Build APK with Kivy Docker image
+        uses: addnab/docker-run-action@v3
         with:
-          python-version: '3.11'
-
-      - name: Install system dependencies
-        run: |
-          sudo apt update
-          sudo apt install -y --no-install-recommends \
-            git zip unzip openjdk-17-jdk autoconf automake libtool libtool-bin \
-            pkg-config zlib1g-dev libncurses5-dev libncursesw5-dev \
-            cmake libffi-dev libssl-dev wget unzip gettext libltdl-dev
-
-      - name: Install Aidl
-        run: |
-          sudo add-apt-repository universe -y
-          sudo apt update
-          sudo apt install -y aidl
-
-      - name: Install Buildozer
-        run: |
-          pip install --user buildozer cython
-
-      - name: Build APK with Buildozer
-        run: |
-          export PATH=$PATH:~/.local/bin
-          buildozer -v android debug
+          image: kivy/buildozer:latest
+          options: -v ${{ github.workspace }}:/home/user/hostcwd
+          run: |
+            cd /home/user/hostcwd
+            yes | buildozer android debug
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
