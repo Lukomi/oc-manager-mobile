@@ -1,5 +1,7 @@
 import os
 import json
+import shutil
+import datetime
 from kivy.app import App
 from kivy.core.text import LabelBase
 from kivy.core.window import Window
@@ -21,10 +23,24 @@ from kivy.uix.behaviors import ButtonBehavior
 from kivy.utils import platform, get_color_from_hex
 
 if platform == 'android':
-    from android.storage import app_storage_path
+    from android.storage import app_storage_path, primary_external_storage_path
+    from android.permissions import request_permissions, Permission
+    # 请求存储权限
+    try:
+        request_permissions([Permission.READ_EXTERNAL_STORAGE,
+                              Permission.WRITE_EXTERNAL_STORAGE])
+    except Exception as e:
+        print("权限请求失败：", e)
     DATA_DIR = app_storage_path()
+    # 备份到手机外部存储的固定文件夹
+    try:
+        BACKUP_ROOT = os.path.join(primary_external_storage_path(),
+                                    "OCManager_Backup")
+    except Exception:
+        BACKUP_ROOT = os.path.join(DATA_DIR, "backups")
 else:
     DATA_DIR = os.path.dirname(os.path.abspath(__file__))
+    BACKUP_ROOT = os.path.join(DATA_DIR, "backups")
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DATA_FILE = os.path.join(DATA_DIR, "oc_data.json")
@@ -305,8 +321,14 @@ class HomeScreen(Screen):
         title.bind(size=title.setter('text_size'))
         top_row.add_widget(title)
 
+        menu_btn = RoundedButton(text="☰", bg_color=C_SIDEBAR,
+                                  text_color=C_TEXT, font_size=sp(18),
+                                  size_hint_x=None, width=dp(40))
+        menu_btn.bind(on_press=self.open_main_menu)
+        top_row.add_widget(menu_btn)
+
         new_btn = btn_primary("＋ 新建", font_size=sp(13),
-                              size_hint_x=None, width=dp(90))
+                              size_hint_x=None, width=dp(80))
         new_btn.bind(on_press=self.on_new_oc)
         top_row.add_widget(new_btn)
         top_card.add_widget(top_row)
@@ -594,7 +616,172 @@ class HomeScreen(Screen):
         ok_btn.bind(on_press=on_ok)
         cancel_btn.bind(on_press=popup.dismiss)
         popup.open()
+    # ---------- 主菜单 ----------
+    def open_main_menu(self, instance):
+        content = CardBox(orientation='vertical',
+                          padding=dp(12), spacing=dp(10))
+        content.add_widget(Label(text="菜单", font_name='Chinese',
+                                 font_size=sp(15), bold=True, color=C_TEXT,
+                                 size_hint_y=None, height=dp(32)))
 
+        backup_btn = btn_primary("备份数据", font_size=sp(14),
+                                  size_hint_y=None, height=dp(48))
+        content.add_widget(backup_btn)
+
+        restore_btn = btn_success("恢复数据", font_size=sp(14),
+                                   size_hint_y=None, height=dp(48))
+        content.add_widget(restore_btn)
+
+        close_btn = btn_light("关闭", font_size=sp(13),
+                               size_hint_y=None, height=dp(42))
+        content.add_widget(close_btn)
+
+        popup = Popup(title="菜单", title_font='Chinese',
+                      title_size=sp(14), content=content,
+                      size_hint=(0.8, 0.5),
+                      background_color=C_BG)
+        close_btn.bind(on_press=popup.dismiss)
+        backup_btn.bind(on_press=lambda x: (popup.dismiss(),
+                                             self.backup_data(None)))
+        restore_btn.bind(on_press=lambda x: (popup.dismiss(),
+                                              self.restore_data(None)))
+        popup.open()
+
+    # ---------- 备份数据 ----------
+    def backup_data(self, instance):
+        try:
+            os.makedirs(BACKUP_ROOT, exist_ok=True)
+            ts = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+            backup_dir = os.path.join(BACKUP_ROOT, f"OC备份_{ts}")
+            os.makedirs(backup_dir, exist_ok=True)
+
+            if os.path.exists(DATA_FILE):
+                shutil.copy2(DATA_FILE,
+                             os.path.join(backup_dir, "oc_data.json"))
+            if os.path.exists(CATEGORIES_FILE):
+                shutil.copy2(CATEGORIES_FILE,
+                             os.path.join(backup_dir, "categories.json"))
+
+            self.show_toast(f"已备份：\n{os.path.basename(backup_dir)}")
+        except Exception as e:
+            self.show_toast(f"备份失败：{e}")
+
+    # ---------- 恢复数据 ----------
+    def restore_data(self, instance):
+        if not os.path.exists(BACKUP_ROOT):
+            self.show_toast("没有找到备份目录")
+            return
+
+        backups = []
+        try:
+            for name in os.listdir(BACKUP_ROOT):
+                full = os.path.join(BACKUP_ROOT, name)
+                if os.path.isdir(full):
+                    backups.append(name)
+        except Exception as e:
+            self.show_toast(f"读取失败：{e}")
+            return
+
+        if not backups:
+            self.show_toast("没有可恢复的备份")
+            return
+
+        backups.sort(reverse=True)
+
+        content = CardBox(orientation='vertical',
+                          padding=dp(12), spacing=dp(8))
+        content.add_widget(Label(text="选择要恢复的备份",
+                                 font_name='Chinese', font_size=sp(15),
+                                 bold=True, color=C_TEXT,
+                                 size_hint_y=None, height=dp(32)))
+        scroll = ScrollView(do_scroll_x=False)
+        list_box = BoxLayout(orientation='vertical',
+                             size_hint_y=None, spacing=dp(4))
+        list_box.bind(minimum_height=list_box.setter('height'))
+        scroll.add_widget(list_box)
+        content.add_widget(scroll)
+
+        popup = Popup(title="恢复数据", title_font='Chinese',
+                      title_size=sp(14), content=content,
+                      size_hint=(0.9, 0.75),
+                      background_color=C_BG)
+
+        def make_restore(name):
+            def do_restore(inst):
+                popup.dismiss()
+                self.confirm_restore(name)
+            return do_restore
+
+        for name in backups:
+            btn = btn_light(name, font_size=sp(12),
+                            size_hint_y=None, height=dp(46))
+            btn.bind(on_press=make_restore(name))
+            list_box.add_widget(btn)
+
+        cancel_btn = btn_light("取消", font_size=sp(13),
+                                size_hint_y=None, height=dp(42))
+        cancel_btn.bind(on_press=popup.dismiss)
+        content.add_widget(cancel_btn)
+        popup.open()
+
+    def confirm_restore(self, backup_name):
+        content = CardBox(orientation='vertical',
+                          padding=dp(12), spacing=dp(10))
+        content.add_widget(Label(
+            text=f"恢复「{backup_name}」？",
+            font_name='Chinese', font_size=sp(15),
+            bold=True, color=C_TEXT,
+            size_hint_y=None, height=dp(40)))
+        content.add_widget(Label(
+            text="当前数据会被覆盖，且无法撤销",
+            font_name='Chinese', font_size=sp(11),
+            color=C_DANGER,
+            size_hint_y=None, height=dp(28)))
+
+        btn_row = BoxLayout(size_hint_y=None, height=dp(46), spacing=dp(8))
+        ok_btn = btn_danger("恢复", font_size=sp(14))
+        cancel_btn = btn_light("取消", font_size=sp(14))
+        btn_row.add_widget(ok_btn)
+        btn_row.add_widget(cancel_btn)
+        content.add_widget(btn_row)
+
+        popup = Popup(title="恢复数据", title_font='Chinese',
+                      title_size=sp(14), content=content,
+                      size_hint=(0.85, 0.45),
+                      background_color=C_BG)
+
+        def on_ok(inst):
+            popup.dismiss()
+            self.do_restore(backup_name)
+
+        ok_btn.bind(on_press=on_ok)
+        cancel_btn.bind(on_press=popup.dismiss)
+        popup.open()
+
+    def do_restore(self, backup_name):
+        backup_dir = os.path.join(BACKUP_ROOT, backup_name)
+        data_src = os.path.join(backup_dir, "oc_data.json")
+        cat_src = os.path.join(backup_dir, "categories.json")
+
+        if not os.path.exists(data_src):
+            self.show_toast("备份损坏，缺少 oc_data.json")
+            return
+
+        try:
+            shutil.copy2(data_src, DATA_FILE)
+            if os.path.exists(cat_src):
+                shutil.copy2(cat_src, CATEGORIES_FILE)
+
+            self.load_data()
+            self.load_categories()
+            self.current_cat = "全部"
+            self.oc_title.text = "全部"
+            self.refresh_category_list()
+            self.refresh_oc_list()
+
+            self.show_toast("已恢复")
+        except Exception as e:
+            self.show_toast(f"恢复失败：{e}")
     def show_toast(self, text):
         content = BoxLayout()
         content.add_widget(Label(text=text, font_name='Chinese',
@@ -1415,6 +1602,7 @@ class DetailScreen(Screen):
         ok_btn.bind(on_press=on_ok)
         cancel_btn.bind(on_press=popup.dismiss)
         popup.open()
+
 
     def show_toast(self, text):
         content = BoxLayout()
