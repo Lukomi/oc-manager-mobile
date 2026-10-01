@@ -31,7 +31,6 @@ jobs:
           sudo add-apt-repository universe -y
           sudo apt update
           sudo apt install -y aidl
-          aidl --version
 
       - name: Install Buildozer
         run: |
