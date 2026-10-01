@@ -11,7 +11,6 @@ fullscreen = 0
 android.permissions = READ_EXTERNAL_STORAGE,WRITE_EXTERNAL_STORAGE,READ_MEDIA_IMAGES
 android.accept_sdk_license = True
 android.arch = arm64-v8a
-p4a.branch = master
 
 [buildozer]
 log_level = 2

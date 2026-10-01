@@ -22,9 +22,9 @@ jobs:
         run: |
           sudo apt update
           sudo apt install -y --no-install-recommends \
-            git zip unzip openjdk-17-jdk autoconf libtool \
+            git zip unzip openjdk-17-jdk autoconf automake libtool libtool-bin \
             pkg-config zlib1g-dev libncurses5-dev libncursesw5-dev \
-            cmake libffi-dev libssl-dev wget unzip
+            cmake libffi-dev libssl-dev wget unzip gettext
 
       - name: Install Aidl
         run: |
