@@ -25,26 +25,35 @@ from kivy.utils import platform, get_color_from_hex
 if platform == 'android':
     from android.storage import app_storage_path, primary_external_storage_path
     from android.permissions import request_permissions, Permission
-    # 请求存储权限
     try:
         request_permissions([Permission.READ_EXTERNAL_STORAGE,
-                              Permission.WRITE_EXTERNAL_STORAGE])
+                              Permission.WRITE_EXTERNAL_STORAGE,
+                              Permission.READ_MEDIA_IMAGES])
     except Exception as e:
         print("权限请求失败：", e)
     DATA_DIR = app_storage_path()
-    # 备份到手机外部存储的固定文件夹
     try:
-        BACKUP_ROOT = os.path.join(primary_external_storage_path(),
-                                    "OCManager_Backup")
+        BACKUP_ROOT_DEFAULT = os.path.join(primary_external_storage_path(),
+                                            "OCManager_Backup")
     except Exception:
-        BACKUP_ROOT = os.path.join(DATA_DIR, "backups")
+        BACKUP_ROOT_DEFAULT = os.path.join(DATA_DIR, "backups")
+    # 用于扫描导入文件的候选目录
+    SEARCH_DIRS = [
+        "/storage/emulated/0/Download",
+        "/storage/emulated/0/Documents",
+        "/storage/emulated/0",
+        "/sdcard/Download",
+        "/sdcard/Documents",
+    ]
 else:
     DATA_DIR = os.path.dirname(os.path.abspath(__file__))
-    BACKUP_ROOT = os.path.join(DATA_DIR, "backups")
+    BACKUP_ROOT_DEFAULT = os.path.join(DATA_DIR, "backups")
+    SEARCH_DIRS = [DATA_DIR]
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DATA_FILE = os.path.join(DATA_DIR, "oc_data.json")
 CATEGORIES_FILE = os.path.join(DATA_DIR, "categories.json")
+CONFIG_FILE = os.path.join(DATA_DIR, "app_config.json")
 
 FONT_PATH = os.path.join(BASE_DIR, "assets", "fonts", "simhei.ttf")
 try:
@@ -52,7 +61,31 @@ try:
 except Exception as e:
     print("字体注册失败：", e)
 
-# ===== 配色（与电脑版一致）=====
+
+# ===== 读取/保存用户配置（备份路径等） =====
+def load_app_config():
+    if os.path.exists(CONFIG_FILE):
+        try:
+            with open(CONFIG_FILE, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except Exception:
+            return {}
+    return {}
+
+
+def save_app_config(cfg):
+    try:
+        with open(CONFIG_FILE, "w", encoding="utf-8") as f:
+            json.dump(cfg, f, ensure_ascii=False, indent=2)
+    except Exception as e:
+        print("保存配置失败：", e)
+
+
+APP_CFG = load_app_config()
+BACKUP_ROOT = APP_CFG.get("backup_root", BACKUP_ROOT_DEFAULT)
+
+
+# ===== 配色 =====
 C_PRIMARY       = get_color_from_hex("#4A90E2")
 C_PRIMARY_DARK  = get_color_from_hex("#357ABD")
 C_PRIMARY_LIGHT = get_color_from_hex("#E8F1FB")
@@ -68,12 +101,23 @@ C_TEXT_SUB      = get_color_from_hex("#606266")
 C_TEXT_LIGHT    = get_color_from_hex("#909399")
 C_SIDEBAR       = get_color_from_hex("#EEF1F5")
 C_SIDEBAR_HOVER = get_color_from_hex("#DDE3EB")
-C_TAB_BAR       = get_color_from_hex("#DDE2EA")
-C_TAB_ACTIVE    = get_color_from_hex("#FFFFFF")
-C_TAB_INACTIVE  = get_color_from_hex("#C9D0DA")
 
 Window.clearcolor = C_BG
-Window.softinput_mode = 'below_target'  # 键盘弹出时把输入框顶上去
+Window.softinput_mode = 'pan'  # 键盘弹出时整个页面平移
+
+
+# ===== 统一弹窗（居中偏上） =====
+def make_popup(title, content, size_hint=(0.85, 0.5)):
+    return Popup(
+        title=title,
+        title_font='Chinese',
+        title_size=sp(14),
+        content=content,
+        size_hint=size_hint,
+        background_color=C_BG,
+        pos_hint={'center_x': 0.5, 'center_y': 0.55},
+        auto_dismiss=False,
+    )
 
 
 # ========== 圆角卡片容器 ==========
@@ -119,10 +163,8 @@ class RoundedButton(Button):
         self._color.rgba = color
 
 
-# 快捷生成不同风格按钮
 def btn_primary(text, **kw):
-    b = RoundedButton(text=text, bg_color=C_PRIMARY, **kw)
-    return b
+    return RoundedButton(text=text, bg_color=C_PRIMARY, **kw)
 
 
 def btn_success(text, **kw):
@@ -204,7 +246,7 @@ class AutoLabel(Label):
         self.height = h
 
 
-# ========== 可点击的图片 ==========
+# ========== 可点击图片 ==========
 class ClickableImage(ButtonBehavior, KivyImage):
     def __init__(self, full_path=None, **kwargs):
         super().__init__(**kwargs)
@@ -223,11 +265,9 @@ class ClickableImage(ButtonBehavior, KivyImage):
         close_btn = btn_primary("关闭", font_size=sp(15),
                                 size_hint_y=None, height=dp(46))
         content.add_widget(close_btn)
-        popup = Popup(title=os.path.basename(fixed),
-                      title_font='Chinese', title_size=sp(14),
-                      content=content, size_hint=(0.95, 0.95),
-                      auto_dismiss=True,
-                      background_color=C_BG)
+        popup = make_popup(os.path.basename(fixed), content,
+                           size_hint=(0.95, 0.95))
+        popup.auto_dismiss = True
         close_btn.bind(on_press=popup.dismiss)
         popup.open()
 
@@ -266,15 +306,21 @@ class HomeScreen(Screen):
 
     def load_data(self):
         if os.path.exists(DATA_FILE):
-            with open(DATA_FILE, "r", encoding="utf-8") as f:
-                self.all_data = json.load(f)
+            try:
+                with open(DATA_FILE, "r", encoding="utf-8") as f:
+                    self.all_data = json.load(f)
+            except Exception:
+                self.all_data = []
         else:
             self.all_data = []
 
     def load_categories(self):
         if os.path.exists(CATEGORIES_FILE):
-            with open(CATEGORIES_FILE, "r", encoding="utf-8") as f:
-                self.categories = json.load(f)
+            try:
+                with open(CATEGORIES_FILE, "r", encoding="utf-8") as f:
+                    self.categories = json.load(f)
+            except Exception:
+                self.categories = []
         else:
             self.categories = []
 
@@ -308,11 +354,9 @@ class HomeScreen(Screen):
         return cats
 
     def build_ui(self):
-        # 最外层浅灰背景
         outer = BoxLayout(orientation='vertical',
                           padding=dp(8), spacing=dp(8))
 
-        # 顶部工具栏卡片
         top_card = CardBox(size_hint_y=None, height=dp(56),
                            padding=(dp(10), dp(8)))
         top_row = BoxLayout(spacing=dp(6))
@@ -337,7 +381,6 @@ class HomeScreen(Screen):
 
         body = BoxLayout(orientation='horizontal', spacing=dp(8))
 
-        # 左侧分类卡片
         left_card = CardBox(size_hint_x=0.34, padding=dp(8), spacing=dp(6),
                             orientation='vertical')
         cat_title = Label(text="分类", font_name='Chinese',
@@ -361,7 +404,6 @@ class HomeScreen(Screen):
 
         body.add_widget(left_card)
 
-        # 右侧 OC 列表卡片
         right_card = CardBox(padding=dp(8), spacing=dp(6),
                              orientation='vertical')
         self.oc_title = Label(text="全部", font_name='Chinese',
@@ -402,16 +444,15 @@ class HomeScreen(Screen):
                 fg = C_TEXT
 
             if is_special:
-                btn = RoundedButton(
-                    text=cat, bg_color=bg, text_color=fg,
-                    font_size=sp(13),
-                    size_hint_y=None, height=dp(44))
+                btn = RoundedButton(text=cat, bg_color=bg, text_color=fg,
+                                     font_size=sp(13),
+                                     size_hint_y=None, height=dp(44))
             else:
-                btn = LongPressButton(
-                    text=cat, bg_color=bg, text_color=fg,
-                    font_size=sp(13),
-                    size_hint_y=None, height=dp(44),
-                    on_long_press=lambda inst, c=cat: self.on_delete_category(c))
+                btn = LongPressButton(text=cat, bg_color=bg, text_color=fg,
+                                       font_size=sp(13),
+                                       size_hint_y=None, height=dp(44),
+                                       on_long_press=lambda inst, c=cat:
+                                       self.on_delete_category(c))
             btn.bind(on_press=lambda b, c=cat: self.on_category_click(c))
             self.cat_list.add_widget(btn)
 
@@ -464,10 +505,7 @@ class HomeScreen(Screen):
         btn_row.add_widget(cancel_btn)
         content.add_widget(btn_row)
 
-        popup = Popup(title="新建分类", title_font='Chinese',
-                      title_size=sp(14), content=content,
-                      size_hint=(0.85, 0.45),
-                      background_color=C_BG)
+        popup = make_popup("新建分类", content, size_hint=(0.85, 0.45))
 
         def on_ok(inst):
             name = name_input.text.strip()
@@ -508,10 +546,7 @@ class HomeScreen(Screen):
         btn_row.add_widget(cancel_btn)
         content.add_widget(btn_row)
 
-        popup = Popup(title="删除分类", title_font='Chinese',
-                      title_size=sp(14), content=content,
-                      size_hint=(0.85, 0.45),
-                      background_color=C_BG)
+        popup = make_popup("删除分类", content, size_hint=(0.85, 0.45))
 
         def on_ok(inst):
             for oc in self.all_data:
@@ -561,10 +596,7 @@ class HomeScreen(Screen):
         btn_row.add_widget(cancel_btn)
         content.add_widget(btn_row)
 
-        popup = Popup(title="新建 OC", title_font='Chinese',
-                      title_size=sp(14), content=content,
-                      size_hint=(0.9, 0.7),
-                      background_color=C_BG)
+        popup = make_popup("新建 OC", content, size_hint=(0.9, 0.65))
 
         def on_ok(inst):
             name = name_input.text.strip()
@@ -602,10 +634,7 @@ class HomeScreen(Screen):
         btn_row.add_widget(ok_btn)
         btn_row.add_widget(cancel_btn)
         content.add_widget(btn_row)
-        popup = Popup(title="删除 OC", title_font='Chinese',
-                      title_size=sp(14), content=content,
-                      size_hint=(0.85, 0.45),
-                      background_color=C_BG)
+        popup = make_popup("删除 OC", content, size_hint=(0.85, 0.45))
 
         def on_ok(inst):
             self.all_data.pop(idx)
@@ -617,6 +646,7 @@ class HomeScreen(Screen):
         ok_btn.bind(on_press=on_ok)
         cancel_btn.bind(on_press=popup.dismiss)
         popup.open()
+
     # ---------- 主菜单 ----------
     def open_main_menu(self, instance):
         content = CardBox(orientation='vertical',
@@ -629,6 +659,10 @@ class HomeScreen(Screen):
                                   size_hint_y=None, height=dp(48))
         content.add_widget(backup_btn)
 
+        set_path_btn = btn_ghost("设置备份路径", font_size=sp(13),
+                                  size_hint_y=None, height=dp(44))
+        content.add_widget(set_path_btn)
+
         import_btn = btn_success("导入数据", font_size=sp(14),
                                   size_hint_y=None, height=dp(48))
         content.add_widget(import_btn)
@@ -637,15 +671,62 @@ class HomeScreen(Screen):
                                size_hint_y=None, height=dp(42))
         content.add_widget(close_btn)
 
-        popup = Popup(title="菜单", title_font='Chinese',
-                      title_size=sp(14), content=content,
-                      size_hint=(0.8, 0.5),
-                      background_color=C_BG)
+        popup = make_popup("菜单", content, size_hint=(0.85, 0.65))
+
         close_btn.bind(on_press=popup.dismiss)
         backup_btn.bind(on_press=lambda x: (popup.dismiss(),
                                              self.backup_data(None)))
+        set_path_btn.bind(on_press=lambda x: (popup.dismiss(),
+                                               self.set_backup_path(None)))
         import_btn.bind(on_press=lambda x: (popup.dismiss(),
                                              self.import_data(None)))
+        popup.open()
+
+    # ---------- 设置备份路径 ----------
+    def set_backup_path(self, instance):
+        content = CardBox(orientation='vertical',
+                          padding=dp(12), spacing=dp(10))
+        content.add_widget(Label(text="备份存储路径",
+                                 font_name='Chinese', font_size=sp(15),
+                                 bold=True, color=C_TEXT,
+                                 size_hint_y=None, height=dp(28)))
+        content.add_widget(Label(
+            text="留空则用默认路径。\n推荐：/storage/emulated/0/OCManager_Backup",
+            font_name='Chinese', font_size=sp(10),
+            color=C_TEXT_LIGHT,
+            size_hint_y=None, height=dp(44)))
+        path_input = RoundedInput(multiline=False,
+                                   size_hint_y=None, height=dp(46),
+                                   text=BACKUP_ROOT)
+        content.add_widget(path_input)
+
+        btn_row = BoxLayout(size_hint_y=None, height=dp(46), spacing=dp(8))
+        ok_btn = btn_primary("确定", font_size=sp(14))
+        cancel_btn = btn_light("取消", font_size=sp(14))
+        btn_row.add_widget(ok_btn)
+        btn_row.add_widget(cancel_btn)
+        content.add_widget(btn_row)
+
+        popup = make_popup("设置备份路径", content, size_hint=(0.9, 0.55))
+
+        def on_ok(inst):
+            global BACKUP_ROOT
+            new_path = path_input.text.strip()
+            if not new_path:
+                new_path = BACKUP_ROOT_DEFAULT
+            try:
+                os.makedirs(new_path, exist_ok=True)
+            except Exception as e:
+                self.show_toast(f"路径无效：{e}")
+                return
+            BACKUP_ROOT = new_path
+            APP_CFG["backup_root"] = new_path
+            save_app_config(APP_CFG)
+            popup.dismiss()
+            self.show_toast(f"已设置：\n{new_path}")
+
+        ok_btn.bind(on_press=on_ok)
+        cancel_btn.bind(on_press=popup.dismiss)
         popup.open()
 
     # ---------- 备份数据 ----------
@@ -663,35 +744,43 @@ class HomeScreen(Screen):
                 shutil.copy2(CATEGORIES_FILE,
                              os.path.join(backup_dir, "categories.json"))
 
-            self.show_toast(f"已备份：\n{os.path.basename(backup_dir)}")
+            self.show_toast(f"已备份到：\n{backup_dir}")
         except Exception as e:
             self.show_toast(f"备份失败：{e}")
 
-    # ---------- 恢复数据 ----------
-    def restore_data(self, instance):
-        if not os.path.exists(BACKUP_ROOT):
-            self.show_toast("没有找到备份目录")
-            return
+    # ---------- 导入数据（扫描常见目录） ----------
+    def import_data(self, instance):
+        found = []
+        search_dirs = list(SEARCH_DIRS)
+        # 加上备份目录
+        if os.path.exists(BACKUP_ROOT):
+            search_dirs.append(BACKUP_ROOT)
 
-        backups = []
-        try:
-            for name in os.listdir(BACKUP_ROOT):
-                full = os.path.join(BACKUP_ROOT, name)
-                if os.path.isdir(full):
-                    backups.append(name)
-        except Exception as e:
-            self.show_toast(f"读取失败：{e}")
-            return
+        for base in search_dirs:
+            if not os.path.exists(base):
+                continue
+            try:
+                for root, dirs, files in os.walk(base):
+                    # 限制搜索深度，避免太慢
+                    depth = root[len(base):].count(os.sep)
+                    if depth > 3:
+                        dirs[:] = []
+                        continue
+                    for f in files:
+                        if f == "oc_data.json":
+                            full = os.path.join(root, f)
+                            if full not in found:
+                                found.append(full)
+            except Exception:
+                continue
 
-        if not backups:
-            self.show_toast("没有可恢复的备份")
+        if not found:
+            self.show_toast("未找到 oc_data.json\n请放到手机的 下载 或 Documents 文件夹")
             return
-
-        backups.sort(reverse=True)
 
         content = CardBox(orientation='vertical',
                           padding=dp(12), spacing=dp(8))
-        content.add_widget(Label(text="选择要恢复的备份",
+        content.add_widget(Label(text="选择要导入的文件",
                                  font_name='Chinese', font_size=sp(15),
                                  bold=True, color=C_TEXT,
                                  size_hint_y=None, height=dp(32)))
@@ -702,21 +791,22 @@ class HomeScreen(Screen):
         scroll.add_widget(list_box)
         content.add_widget(scroll)
 
-        popup = Popup(title="恢复数据", title_font='Chinese',
-                      title_size=sp(14), content=content,
-                      size_hint=(0.9, 0.75),
-                      background_color=C_BG)
+        popup = make_popup("导入数据", content, size_hint=(0.95, 0.75))
 
-        def make_restore(name):
-            def do_restore(inst):
+        def make_pick(path):
+            def pick(inst):
                 popup.dismiss()
-                self.confirm_restore(name)
-            return do_restore
+                self.confirm_import(path)
+            return pick
 
-        for name in backups:
-            btn = btn_light(name, font_size=sp(12),
-                            size_hint_y=None, height=dp(46))
-            btn.bind(on_press=make_restore(name))
+        for path in found:
+            # 显示相对路径的尾部，太长不好看
+            display = path
+            if len(display) > 50:
+                display = "..." + display[-50:]
+            btn = btn_light(display, font_size=sp(11),
+                            size_hint_y=None, height=dp(52))
+            btn.bind(on_press=make_pick(path))
             list_box.add_widget(btn)
 
         cancel_btn = btn_light("取消", font_size=sp(13),
@@ -725,14 +815,14 @@ class HomeScreen(Screen):
         content.add_widget(cancel_btn)
         popup.open()
 
-    def confirm_restore(self, backup_name):
+    def confirm_import(self, src_path):
         content = CardBox(orientation='vertical',
                           padding=dp(12), spacing=dp(10))
         content.add_widget(Label(
-            text=f"恢复「{backup_name}」？",
-            font_name='Chinese', font_size=sp(15),
+            text=f"导入：\n{os.path.basename(src_path)}？",
+            font_name='Chinese', font_size=sp(14),
             bold=True, color=C_TEXT,
-            size_hint_y=None, height=dp(40)))
+            size_hint_y=None, height=dp(60)))
         content.add_widget(Label(
             text="当前数据会被覆盖，且无法撤销",
             font_name='Chinese', font_size=sp(11),
@@ -740,36 +830,34 @@ class HomeScreen(Screen):
             size_hint_y=None, height=dp(28)))
 
         btn_row = BoxLayout(size_hint_y=None, height=dp(46), spacing=dp(8))
-        ok_btn = btn_danger("恢复", font_size=sp(14))
+        ok_btn = btn_danger("导入", font_size=sp(14))
         cancel_btn = btn_light("取消", font_size=sp(14))
         btn_row.add_widget(ok_btn)
         btn_row.add_widget(cancel_btn)
         content.add_widget(btn_row)
 
-        popup = Popup(title="恢复数据", title_font='Chinese',
-                      title_size=sp(14), content=content,
-                      size_hint=(0.85, 0.45),
-                      background_color=C_BG)
+        popup = make_popup("导入数据", content, size_hint=(0.9, 0.45))
 
         def on_ok(inst):
             popup.dismiss()
-            self.do_restore(backup_name)
+            self.do_import(src_path)
 
         ok_btn.bind(on_press=on_ok)
         cancel_btn.bind(on_press=popup.dismiss)
         popup.open()
 
-    def do_restore(self, backup_name):
-        backup_dir = os.path.join(BACKUP_ROOT, backup_name)
-        data_src = os.path.join(backup_dir, "oc_data.json")
-        cat_src = os.path.join(backup_dir, "categories.json")
-
-        if not os.path.exists(data_src):
-            self.show_toast("备份损坏，缺少 oc_data.json")
-            return
-
+    def do_import(self, src_path):
         try:
-            shutil.copy2(data_src, DATA_FILE)
+            with open(src_path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+            if not isinstance(data, list):
+                self.show_toast("文件格式不对")
+                return
+
+            shutil.copy2(src_path, DATA_FILE)
+
+            cat_src = os.path.join(os.path.dirname(src_path),
+                                    "categories.json")
             if os.path.exists(cat_src):
                 shutil.copy2(cat_src, CATEGORIES_FILE)
 
@@ -780,19 +868,23 @@ class HomeScreen(Screen):
             self.refresh_category_list()
             self.refresh_oc_list()
 
-            self.show_toast("已恢复")
+            self.show_toast("导入成功")
+        except json.JSONDecodeError:
+            self.show_toast("不是合法 JSON")
         except Exception as e:
-            self.show_toast(f"恢复失败：{e}")
+            self.show_toast(f"导入失败：{e}")
+
     def show_toast(self, text):
         content = BoxLayout()
         content.add_widget(Label(text=text, font_name='Chinese',
-                                 font_size=sp(15), color=C_TEXT))
+                                 font_size=sp(13), color=C_TEXT))
         popup = Popup(title="", title_size=0, separator_height=0,
                       content=content,
-                      size_hint=(None, None), size=(dp(220), dp(80)),
-                      auto_dismiss=True, background_color=C_CARD)
+                      size_hint=(None, None), size=(dp(280), dp(120)),
+                      auto_dismiss=True, background_color=C_CARD,
+                      pos_hint={'center_x': 0.5, 'center_y': 0.6})
         popup.open()
-        Clock.schedule_once(lambda dt: popup.dismiss(), 1.2)
+        Clock.schedule_once(lambda dt: popup.dismiss(), 2.0)
 
 
 # ========== 详情页 ==========
@@ -810,7 +902,6 @@ class DetailScreen(Screen):
         self._edge_start = None
 
     def make_input_row(self, label_text, value, multiline=False):
-        # 每个字段单独一张小卡片
         card = CardBox(orientation='vertical',
                        size_hint_y=None, spacing=dp(4),
                        padding=(dp(10), dp(8)))
@@ -839,12 +930,10 @@ class DetailScreen(Screen):
 
         root = FloatLayout()
 
-        # ===== 主内容 =====
         main = BoxLayout(orientation='vertical',
                          padding=dp(8), spacing=dp(8),
                          size_hint=(1, 1), pos_hint={'x': 0, 'y': 0})
 
-        # 顶部工具栏
         top_card = CardBox(size_hint_y=None, height=dp(52),
                            padding=(dp(8), dp(6)))
         top = BoxLayout(spacing=dp(6))
@@ -873,7 +962,6 @@ class DetailScreen(Screen):
         top_card.add_widget(top)
         main.add_widget(top_card)
 
-        # 内容滚动区
         scroll = ScrollView(do_scroll_x=False,
                             bar_width=dp(3),
                             scroll_type=['bars', 'content'])
@@ -889,7 +977,6 @@ class DetailScreen(Screen):
         main.add_widget(scroll)
         root.add_widget(main)
 
-        # ===== 侧边栏 =====
         self.sidebar = self._build_sidebar(oc)
         self.sidebar.x = -self._sidebar_w
         root.add_widget(self.sidebar)
@@ -897,7 +984,6 @@ class DetailScreen(Screen):
         self.add_widget(root)
 
     def _build_sections(self, info_box, oc):
-        # 内置字段
         fields = [
             ("名字", "name", False),
             ("分类", "category", False),
@@ -914,7 +1000,6 @@ class DetailScreen(Screen):
             self.field_inputs.append(("builtin", key, ti))
             self.section_widgets[label_text] = card
 
-        # 自定义文字条目 + 子条目
         children_map = oc.get("children_map", {})
         for idx, field in enumerate(oc.get("custom_fields", [])):
             if field.get("type") == "text":
@@ -951,7 +1036,6 @@ class DetailScreen(Screen):
                         info_box.add_widget(sub_card)
                         self.section_widgets[ctitle] = sub_card
 
-        # 图片类型自定义条目
         for field in oc.get("custom_fields", []):
             if field.get("type") != "text":
                 title = field.get("title", "")
@@ -964,7 +1048,6 @@ class DetailScreen(Screen):
                 info_box.add_widget(lbl_card)
                 self.section_widgets[title] = lbl_card
 
-        # 参考图片
         ref_card = CardBox(orientation='vertical',
                             size_hint_y=None, spacing=dp(8),
                             padding=(dp(10), dp(10)))
@@ -1036,7 +1119,6 @@ class DetailScreen(Screen):
                     ref_card.add_widget(grid)
         info_box.add_widget(ref_card)
 
-        # 关系图
         rel_card = CardBox(orientation='vertical',
                             size_hint_y=None, spacing=dp(8),
                             padding=(dp(10), dp(10)))
@@ -1103,7 +1185,6 @@ class DetailScreen(Screen):
         rel_card.add_widget(add_rel_btn)
         info_box.add_widget(rel_card)
 
-    # ---------- 侧边栏 ----------
     def _build_sidebar(self, oc):
         sb = BoxLayout(orientation='vertical',
                        size_hint=(None, 1),
@@ -1118,12 +1199,10 @@ class DetailScreen(Screen):
             bg_rect.size = sb.size
         sb.bind(pos=update_bg, size=update_bg)
 
-        # 顶部标题
         sb.add_widget(Label(text="导航", font_name='Chinese',
                             font_size=sp(15), bold=True, color=C_TEXT,
                             size_hint_y=None, height=dp(32)))
 
-        # 中间滚动区
         scroll = ScrollView(do_scroll_x=False, do_scroll_y=True,
                             bar_width=dp(4),
                             scroll_type=['bars', 'content'],
@@ -1136,25 +1215,21 @@ class DetailScreen(Screen):
             if is_sub:
                 b = btn_light(text, font_size=sp(12),
                               size_hint_y=None, height=dp(40))
-                b.halign = 'left'
-                b.bind(size=b.setter('text_size'))
             else:
                 b = RoundedButton(text=text, bg_color=C_SIDEBAR,
                                    text_color=C_TEXT,
                                    font_size=sp(13),
                                    size_hint_y=None, height=dp(46))
-                b.halign = 'left'
-                b.bind(size=b.setter('text_size'))
+            b.halign = 'left'
+            b.bind(size=b.setter('text_size'))
             b.bind(on_press=lambda inst, t=target: self._on_sidebar_click(t))
             return b
 
-        # 内置条目
         builtin = ["名字", "分类", "其他名字", "年龄", "性别",
                    "样貌描述/锚点", "所属世界观"]
         for t in builtin:
             inner.add_widget(make_item(t, t))
 
-        # 自定义文字条目 + 子条目
         for field in oc.get("custom_fields", []):
             if field.get("type") == "text":
                 title = field.get("title", "")
@@ -1165,20 +1240,17 @@ class DetailScreen(Screen):
                         ct = c.get("title", "")
                         inner.add_widget(make_item("▸ " + ct, ct, is_sub=True))
 
-        # 参考图片 + 分组
         inner.add_widget(make_item("参考图片", "参考图片"))
         for grp in oc.get("image_groups", []):
             gname = grp.get("name", "")
             if gname:
                 inner.add_widget(make_item("◆ " + gname, gname, is_sub=True))
 
-        # 关系图
         inner.add_widget(make_item("关系图", "关系图"))
 
         scroll.add_widget(inner)
         sb.add_widget(scroll)
 
-        # 底部：添加/删除条目
         action_box = BoxLayout(size_hint_y=None, height=dp(96),
                                 orientation='vertical', spacing=dp(4))
         add_btn = btn_primary("＋ 添加条目", font_size=sp(13),
@@ -1242,7 +1314,6 @@ class DetailScreen(Screen):
         self.sidebar_open = False
         Animation(x=-self._sidebar_w, duration=0.2).start(self.sidebar)
 
-    # ---------- 触摸手势 ----------
     def on_touch_down(self, touch):
         if self.sidebar_open and self.sidebar:
             if not self.sidebar.collide_point(*touch.pos):
@@ -1271,7 +1342,6 @@ class DetailScreen(Screen):
         self._edge_start = None
         return super().on_touch_up(touch)
 
-    # ---------- 保存 ----------
     def save_all(self, instance):
         if not self.current_oc:
             return
@@ -1296,7 +1366,6 @@ class DetailScreen(Screen):
             self.show_toast(f"保存失败：{e}")
             return False
 
-    # ---------- 添加条目 ----------
     def add_entry(self, instance):
         content = CardBox(orientation='vertical',
                           padding=dp(12), spacing=dp(10))
@@ -1309,10 +1378,7 @@ class DetailScreen(Screen):
                           size_hint_y=None, height=dp(48))
         content.add_widget(b1)
         content.add_widget(b2)
-        popup = Popup(title="添加条目", title_font='Chinese',
-                      title_size=sp(14), content=content,
-                      size_hint=(0.85, 0.5),
-                      background_color=C_BG)
+        popup = make_popup("添加条目", content, size_hint=(0.85, 0.5))
 
         def choose_text(inst):
             popup.dismiss()
@@ -1342,10 +1408,7 @@ class DetailScreen(Screen):
         list_box.bind(minimum_height=list_box.setter('height'))
         scroll.add_widget(list_box)
         content.add_widget(scroll)
-        popup = Popup(title="选择父条目", title_font='Chinese',
-                      title_size=sp(14), content=content,
-                      size_hint=(0.9, 0.75),
-                      background_color=C_BG)
+        popup = make_popup("选择父条目", content, size_hint=(0.9, 0.75))
 
         top_btn = btn_ghost("（作为顶层条目）", font_size=sp(13),
                              size_hint_y=None, height=dp(46))
@@ -1388,10 +1451,7 @@ class DetailScreen(Screen):
         btn_row.add_widget(ok_btn)
         btn_row.add_widget(cancel_btn)
         content.add_widget(btn_row)
-        popup = Popup(title="添加条目", title_font='Chinese',
-                      title_size=sp(14), content=content,
-                      size_hint=(0.85, 0.45),
-                      background_color=C_BG)
+        popup = make_popup("添加条目", content, size_hint=(0.85, 0.45))
 
         def on_ok(inst):
             title = ti.text.strip()
@@ -1443,10 +1503,7 @@ class DetailScreen(Screen):
         list_box.bind(minimum_height=list_box.setter('height'))
         scroll.add_widget(list_box)
         content.add_widget(scroll)
-        popup = Popup(title="删除条目", title_font='Chinese',
-                      title_size=sp(14), content=content,
-                      size_hint=(0.9, 0.75),
-                      background_color=C_BG)
+        popup = make_popup("删除条目", content, size_hint=(0.9, 0.75))
 
         def make_del(meta, title):
             def do_del(inst):
@@ -1477,7 +1534,6 @@ class DetailScreen(Screen):
         content.add_widget(cancel_btn)
         popup.open()
 
-    # ---------- 关系 ----------
     def add_relation(self, instance):
         oc = self.current_oc
         home = self.manager.get_screen('home')
@@ -1544,10 +1600,7 @@ class DetailScreen(Screen):
         btn_row.add_widget(ok_btn)
         btn_row.add_widget(cancel_btn)
         content.add_widget(btn_row)
-        popup = Popup(title="添加关系", title_font='Chinese',
-                      title_size=sp(14), content=content,
-                      size_hint=(0.95, 0.9),
-                      background_color=C_BG)
+        popup = make_popup("添加关系", content, size_hint=(0.95, 0.9))
 
         def on_ok(inst):
             target = target_holder["value"].strip()
@@ -1588,10 +1641,7 @@ class DetailScreen(Screen):
         btn_row.add_widget(ok_btn)
         btn_row.add_widget(cancel_btn)
         content.add_widget(btn_row)
-        popup = Popup(title="删除关系", title_font='Chinese',
-                      title_size=sp(14), content=content,
-                      size_hint=(0.85, 0.45),
-                      background_color=C_BG)
+        popup = make_popup("删除关系", content, size_hint=(0.85, 0.45))
 
         def on_ok(inst):
             rels.pop(idx)
@@ -1604,17 +1654,17 @@ class DetailScreen(Screen):
         cancel_btn.bind(on_press=popup.dismiss)
         popup.open()
 
-
     def show_toast(self, text):
         content = BoxLayout()
         content.add_widget(Label(text=text, font_name='Chinese',
-                                 font_size=sp(15), color=C_TEXT))
+                                 font_size=sp(13), color=C_TEXT))
         popup = Popup(title="", title_size=0, separator_height=0,
                       content=content,
-                      size_hint=(None, None), size=(dp(220), dp(80)),
-                      auto_dismiss=True, background_color=C_CARD)
+                      size_hint=(None, None), size=(dp(280), dp(120)),
+                      auto_dismiss=True, background_color=C_CARD,
+                      pos_hint={'center_x': 0.5, 'center_y': 0.6})
         popup.open()
-        Clock.schedule_once(lambda dt: popup.dismiss(), 1.2)
+        Clock.schedule_once(lambda dt: popup.dismiss(), 2.0)
 
     def go_back(self, instance):
         self.manager.current = 'home'
@@ -1623,7 +1673,6 @@ class DetailScreen(Screen):
 # ========== App ==========
 class OCApp(App):
     def build(self):
-        # Android 状态栏避让：整个 App 向下偏移一点
         if platform == 'android':
             root = BoxLayout(orientation='vertical',
                              padding=(0, dp(30), 0, 0))
@@ -1635,6 +1684,7 @@ class OCApp(App):
         sm.add_widget(DetailScreen(name='detail'))
         root.add_widget(sm)
         return root
+
 
 if __name__ == "__main__":
     OCApp().run()

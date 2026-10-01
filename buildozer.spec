@@ -4,8 +4,8 @@ package.name = ocmanager
 package.domain = org.example
 source.dir = .
 source.include_exts = py,png,jpg,jpeg,kv,atlas,ttf,json
-version = 1.2
-android.numeric_version = 3
+version = 1.3
+android.numeric_version = 4
 requirements = hostpython3==3.11.9,python3==3.11.9,kivy,plyer
 orientation = portrait
 fullscreen = 0
