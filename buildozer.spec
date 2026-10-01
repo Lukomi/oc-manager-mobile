@@ -5,7 +5,7 @@ package.domain = org.example
 source.dir = .
 source.include_exts = py,png,jpg,jpeg,kv,atlas,ttf,json
 version = 1.0
-requirements = python3==3.11.9,kivy
+requirements = hostpython3==3.11.9,python3==3.11.9,kivy
 orientation = portrait
 fullscreen = 0
 android.permissions = READ_EXTERNAL_STORAGE,WRITE_EXTERNAL_STORAGE,READ_MEDIA_IMAGES
