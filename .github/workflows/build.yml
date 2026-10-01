@@ -7,7 +7,7 @@ on:
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
 
     steps:
       - name: Checkout code
@@ -24,7 +24,7 @@ jobs:
           sudo apt install -y --no-install-recommends \
             git zip unzip openjdk-17-jdk autoconf automake libtool libtool-bin \
             pkg-config zlib1g-dev libncurses5-dev libncursesw5-dev \
-            cmake libffi-dev libssl-dev wget unzip gettext
+            cmake libffi-dev libssl-dev wget unzip gettext libltdl-dev
 
       - name: Install Aidl
         run: |
@@ -39,7 +39,7 @@ jobs:
       - name: Build APK with Buildozer
         run: |
           export PATH=$PATH:~/.local/bin
-          yes | buildozer -v android debug
+          buildozer -v android debug
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
