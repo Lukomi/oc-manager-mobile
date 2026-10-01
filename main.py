@@ -109,17 +109,22 @@ Window.softinput_mode = 'below_target'
 
 # ===== 统一弹窗（居中偏上） =====
 def make_popup(title, content, size_hint=(0.85, 0.5)):
+    # 内容靠上：用 FloatLayout 包一层，content 顶到弹窗顶部
+    wrapper = FloatLayout()
+    content.size_hint = (1, None)
+    content.bind(minimum_height=lambda i, v: setattr(i, 'height', v))
+    content.pos_hint = {'top': 1}
+    wrapper.add_widget(content)
     return Popup(
         title=title,
         title_font='Chinese',
         title_size=sp(14),
-        content=content,
+        content=wrapper,
         size_hint=size_hint,
         background_color=C_BG,
         pos_hint={'center_x': 0.5, 'center_y': 0.65},
         auto_dismiss=False,
     )
-
 # ========== 圆角卡片容器 ==========
 class CardBox(BoxLayout):
     def __init__(self, bg=C_CARD, radius=10, **kwargs):
@@ -223,17 +228,8 @@ class RoundedInput(TextInput):
     def _on_focus(self, instance, value):
         if value:
             self._border_color.rgba = C_PRIMARY
-            # 强制弹出 Android 软键盘
-            try:
-                Window.request_keyboard(None, self, 'text')
-            except Exception:
-                pass
         else:
             self._border_color.rgba = C_BORDER
-            try:
-                Window.release_keyboard(self, 'text')
-            except Exception:
-                pass
 
 # ========== 自动高度 Label ==========
 class AutoLabel(Label):
@@ -727,32 +723,53 @@ class HomeScreen(Screen):
         popup.open()
 
     def do_import(self, src_path):
+        import traceback
+
+        # 1) 先读文件，看是不是合法 JSON
         try:
             with open(src_path, "r", encoding="utf-8") as f:
                 data = json.load(f)
-            if not isinstance(data, list):
-                self.show_toast("文件格式不对")
-                return
+        except Exception as e:
+            self.show_toast(f"读取失败：\n{e}")
+            return
 
+        if not isinstance(data, list):
+            self.show_toast("文件格式不对，应是列表")
+            return
+
+        # 2) 复制文件到数据目录
+        try:
             shutil.copy2(src_path, DATA_FILE)
-
             cat_src = os.path.join(os.path.dirname(src_path),
                                     "categories.json")
             if os.path.exists(cat_src):
                 shutil.copy2(cat_src, CATEGORIES_FILE)
+        except Exception as e:
+            self.show_toast(f"复制失败：\n{e}")
+            return
 
+        # 3) 重新加载数据
+        try:
             self.load_data()
             self.load_categories()
+        except Exception as e:
+            self.show_toast(f"加载失败：\n{e}")
+            return
+
+        # 4) 刷新界面（这一步最容易崩）
+        try:
             self.current_cat = "全部"
-            self.oc_title.text = "全部"
+            if getattr(self, "oc_title", None) is not None:
+                self.oc_title.text = "全部"
             self.refresh_category_list()
             self.refresh_oc_list()
-
-            self.show_toast("导入成功")
-        except json.JSONDecodeError:
-            self.show_toast("不是合法 JSON")
         except Exception as e:
-            self.show_toast(f"导入失败：{e}")
+            err = traceback.format_exc()
+            print("刷新失败：", err)
+            self.show_toast(f"刷新失败：\n{e}")
+            return
+
+        self.show_toast("导入成功")
 
     # ---------- 设置备份路径 ----------
     def set_backup_path(self, instance):
