@@ -103,7 +103,7 @@ C_SIDEBAR       = get_color_from_hex("#EEF1F5")
 C_SIDEBAR_HOVER = get_color_from_hex("#DDE3EB")
 
 Window.clearcolor = C_BG
-Window.softinput_mode = 'pan'  # 键盘弹出时整个页面平移
+Window.softinput_mode = 'below_target'
 
 
 # ===== 统一弹窗（居中偏上） =====
@@ -115,10 +115,9 @@ def make_popup(title, content, size_hint=(0.85, 0.5)):
         content=content,
         size_hint=size_hint,
         background_color=C_BG,
-        pos_hint={'center_x': 0.5, 'center_y': 0.55},
+        pos_hint={'center_x': 0.5, 'center_y': 0.65},
         auto_dismiss=False,
     )
-
 
 # ========== 圆角卡片容器 ==========
 class CardBox(BoxLayout):
@@ -221,6 +220,11 @@ class RoundedInput(TextInput):
         else:
             self._border_color.rgba = C_BORDER
 
+    def on_touch_down(self, touch):
+        # 强制点击输入框时获取焦点并弹出键盘
+        if not self.disabled and self.collide_point(*touch.pos):
+            self.focus = True
+        return super().on_touch_down(touch)
 
 # ========== 自动高度 Label ==========
 class AutoLabel(Label):
@@ -748,42 +752,43 @@ class HomeScreen(Screen):
         except Exception as e:
             self.show_toast(f"备份失败：{e}")
 
-    # ---------- 导入数据（扫描常见目录） ----------
+    # ---------- 导入数据（只查固定路径，秒级完成） ----------
     def import_data(self, instance):
-        found = []
-        search_dirs = list(SEARCH_DIRS)
-        # 加上备份目录
-        if os.path.exists(BACKUP_ROOT):
-            search_dirs.append(BACKUP_ROOT)
+        candidate_paths = [
+            "/storage/emulated/0/Download/oc_data.json",
+            "/storage/emulated/0/Downloads/oc_data.json",
+            "/storage/emulated/0/Documents/oc_data.json",
+            "/storage/emulated/0/oc_data.json",
+            "/storage/emulated/0/OCManager_Backup/oc_data.json",
+            "/sdcard/Download/oc_data.json",
+            "/sdcard/Documents/oc_data.json",
+            "/sdcard/oc_data.json",
+        ]
+        # 备份目录下的所有子目录也查一遍（非递归）
+        try:
+            if os.path.exists(BACKUP_ROOT):
+                for name in os.listdir(BACKUP_ROOT):
+                    p = os.path.join(BACKUP_ROOT, name, "oc_data.json")
+                    candidate_paths.append(p)
+        except Exception:
+            pass
 
-        for base in search_dirs:
-            if not os.path.exists(base):
-                continue
-            try:
-                for root, dirs, files in os.walk(base):
-                    # 限制搜索深度，避免太慢
-                    depth = root[len(base):].count(os.sep)
-                    if depth > 3:
-                        dirs[:] = []
-                        continue
-                    for f in files:
-                        if f == "oc_data.json":
-                            full = os.path.join(root, f)
-                            if full not in found:
-                                found.append(full)
-            except Exception:
-                continue
+        found = [p for p in candidate_paths if os.path.exists(p)]
 
-        if not found:
-            self.show_toast("未找到 oc_data.json\n请放到手机的 下载 或 Documents 文件夹")
-            return
-
+        # 显示结果
         content = CardBox(orientation='vertical',
                           padding=dp(12), spacing=dp(8))
-        content.add_widget(Label(text="选择要导入的文件",
-                                 font_name='Chinese', font_size=sp(15),
-                                 bold=True, color=C_TEXT,
-                                 size_hint_y=None, height=dp(32)))
+        content.add_widget(Label(
+            text="选择要导入的文件",
+            font_name='Chinese', font_size=sp(15),
+            bold=True, color=C_TEXT,
+            size_hint_y=None, height=dp(28)))
+        content.add_widget(Label(
+            text=f"找到 {len(found)} 个候选文件",
+            font_name='Chinese', font_size=sp(11),
+            color=C_TEXT_SUB,
+            size_hint_y=None, height=dp(22)))
+
         scroll = ScrollView(do_scroll_x=False)
         list_box = BoxLayout(orientation='vertical',
                              size_hint_y=None, spacing=dp(4))
@@ -793,99 +798,33 @@ class HomeScreen(Screen):
 
         popup = make_popup("导入数据", content, size_hint=(0.95, 0.75))
 
-        def make_pick(path):
-            def pick(inst):
-                popup.dismiss()
-                self.confirm_import(path)
-            return pick
-
-        for path in found:
-            # 显示相对路径的尾部，太长不好看
-            display = path
-            if len(display) > 50:
-                display = "..." + display[-50:]
-            btn = btn_light(display, font_size=sp(11),
-                            size_hint_y=None, height=dp(52))
-            btn.bind(on_press=make_pick(path))
-            list_box.add_widget(btn)
+        if not found:
+            list_box.add_widget(Label(
+                text="没找到 oc_data.json\n\n请把电脑上的\noc_data.json\n\n复制到手机的\nDownload 文件夹",
+                font_name='Chinese', font_size=sp(12),
+                color=C_DANGER,
+                size_hint_y=None, height=dp(200),
+                halign='center', valign='middle'))
+        else:
+            def make_pick(path):
+                def pick(inst):
+                    popup.dismiss()
+                    self.confirm_import(path)
+                return pick
+            for path in found:
+                display = path
+                if len(display) > 48:
+                    display = "..." + display[-48:]
+                btn = btn_light(display, font_size=sp(10),
+                                size_hint_y=None, height=dp(52))
+                btn.bind(on_press=make_pick(path))
+                list_box.add_widget(btn)
 
         cancel_btn = btn_light("取消", font_size=sp(13),
                                 size_hint_y=None, height=dp(42))
         cancel_btn.bind(on_press=popup.dismiss)
         content.add_widget(cancel_btn)
         popup.open()
-
-    def confirm_import(self, src_path):
-        content = CardBox(orientation='vertical',
-                          padding=dp(12), spacing=dp(10))
-        content.add_widget(Label(
-            text=f"导入：\n{os.path.basename(src_path)}？",
-            font_name='Chinese', font_size=sp(14),
-            bold=True, color=C_TEXT,
-            size_hint_y=None, height=dp(60)))
-        content.add_widget(Label(
-            text="当前数据会被覆盖，且无法撤销",
-            font_name='Chinese', font_size=sp(11),
-            color=C_DANGER,
-            size_hint_y=None, height=dp(28)))
-
-        btn_row = BoxLayout(size_hint_y=None, height=dp(46), spacing=dp(8))
-        ok_btn = btn_danger("导入", font_size=sp(14))
-        cancel_btn = btn_light("取消", font_size=sp(14))
-        btn_row.add_widget(ok_btn)
-        btn_row.add_widget(cancel_btn)
-        content.add_widget(btn_row)
-
-        popup = make_popup("导入数据", content, size_hint=(0.9, 0.45))
-
-        def on_ok(inst):
-            popup.dismiss()
-            self.do_import(src_path)
-
-        ok_btn.bind(on_press=on_ok)
-        cancel_btn.bind(on_press=popup.dismiss)
-        popup.open()
-
-    def do_import(self, src_path):
-        try:
-            with open(src_path, "r", encoding="utf-8") as f:
-                data = json.load(f)
-            if not isinstance(data, list):
-                self.show_toast("文件格式不对")
-                return
-
-            shutil.copy2(src_path, DATA_FILE)
-
-            cat_src = os.path.join(os.path.dirname(src_path),
-                                    "categories.json")
-            if os.path.exists(cat_src):
-                shutil.copy2(cat_src, CATEGORIES_FILE)
-
-            self.load_data()
-            self.load_categories()
-            self.current_cat = "全部"
-            self.oc_title.text = "全部"
-            self.refresh_category_list()
-            self.refresh_oc_list()
-
-            self.show_toast("导入成功")
-        except json.JSONDecodeError:
-            self.show_toast("不是合法 JSON")
-        except Exception as e:
-            self.show_toast(f"导入失败：{e}")
-
-    def show_toast(self, text):
-        content = BoxLayout()
-        content.add_widget(Label(text=text, font_name='Chinese',
-                                 font_size=sp(13), color=C_TEXT))
-        popup = Popup(title="", title_size=0, separator_height=0,
-                      content=content,
-                      size_hint=(None, None), size=(dp(280), dp(120)),
-                      auto_dismiss=True, background_color=C_CARD,
-                      pos_hint={'center_x': 0.5, 'center_y': 0.6})
-        popup.open()
-        Clock.schedule_once(lambda dt: popup.dismiss(), 2.0)
-
 
 # ========== 详情页 ==========
 class DetailScreen(Screen):
